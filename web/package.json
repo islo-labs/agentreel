@@ -1,0 +1,20 @@
+{
+  "name": "cast-video",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "remotion studio",
+    "render": "remotion render CastVideo out/cast.mp4",
+    "render:gif": "remotion render CastVideo out/cast.gif"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4",
+    "remotion": "^4",
+    "react": "^18",
+    "react-dom": "^18",
+    "typescript": "^5"
+  },
+  "devDependencies": {
+    "@types/react": "^18"
+  }
+}

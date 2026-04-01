@@ -1,0 +1,19 @@
+# Binaries
+bin/
+cast
+*.exe
+
+# Output
+out/
+*.mp4
+*.gif
+
+# Node
+web/node_modules/
+web/.remotion/
+
+# OS
+.DS_Store
+
+# Test artifacts
+internal/auth/
