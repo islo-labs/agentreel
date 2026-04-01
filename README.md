@@ -2,6 +2,10 @@
 
 Turn your Claude Code sessions into viral videos.
 
+<p align="center">
+  <img src="demo.gif" alt="cast demo" width="540" />
+</p>
+
 ```bash
 cast
 ```
@@ -49,13 +53,12 @@ cast -o my-video.mp4
 
 ## What the video looks like
 
-**Act 1** — "I asked Claude to..." with a typing animation of your prompt
+| Act 1 | Act 2 | Act 3 |
+|-------|-------|-------|
+| "I asked Claude to..." | Your screenshot | Duration, files, cost |
+| Typing animation | Scale-in with shadow | Spring-animated stats |
 
-**Act 2** — Your screenshot slides in with a drop shadow
-
-**Act 3** — Hero stat (duration), file count, lines changed, cost
-
-10 seconds. 1080×1080. Spring animations. Dark theme.
+10 seconds. 1080×1080. Spring animations. Dark theme. Ready for Twitter/X.
 
 ## Project structure
 

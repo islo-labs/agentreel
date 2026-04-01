@@ -7,6 +7,7 @@ cast
 out/
 *.mp4
 *.gif
+!demo.gif
 
 # Node
 web/node_modules/
