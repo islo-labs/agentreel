@@ -4,6 +4,7 @@ export interface Highlight {
   label: string; // e.g. "Initialize", "Configure", "Run"
   lines: TermLine[]; // terminal lines to display
   zoomLine?: number; // which line to zoom into (0-indexed), optional
+  overlay?: string; // big text overlay shown on top (e.g. "One command.")
 }
 
 export interface TermLine {
@@ -18,7 +19,8 @@ export interface CastProps {
   title: string; // big opening title
   subtitle?: string; // smaller text under title
   highlights: Highlight[];
-  endText?: string; // closing CTA, e.g. "npm install itsovertime"
+  endText?: string; // closing CTA command, e.g. "npm install itsovertime"
+  endUrl?: string; // URL shown under CTA, e.g. "github.com/islo-labs/overtime"
   gradient?: [string, string]; // background gradient colors
 }
 
@@ -28,6 +30,7 @@ export const defaultProps: CastProps = {
   highlights: [
     {
       label: "Initialize",
+      overlay: "One command.",
       lines: [
         { text: "npx @islo-labs/overtime init", isPrompt: true },
         { text: "" },
@@ -38,6 +41,7 @@ export const defaultProps: CastProps = {
     },
     {
       label: "Configure",
+      overlay: "Plain English schedules.",
       lines: [
         { text: "cat overtime.yml", isPrompt: true },
         { text: "shifts:", dim: true },
@@ -50,6 +54,7 @@ export const defaultProps: CastProps = {
     },
     {
       label: "Run",
+      overlay: "Fully autonomous.",
       lines: [
         { text: "npx @islo-labs/overtime", isPrompt: true },
         { text: "" },
@@ -65,5 +70,6 @@ export const defaultProps: CastProps = {
     },
   ],
   endText: "npx @islo-labs/overtime",
+  endUrl: "github.com/islo-labs/overtime",
   gradient: ["#0f0f1a", "#1a0f2e"],
 };
