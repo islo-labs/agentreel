@@ -4,6 +4,8 @@ Turn your Claude Code sessions into viral demo videos.
 
 https://github.com/user-attachments/assets/474fd85d-3b35-48f4-82b8-1b337840fb51
 
+> 🔊 Turn on sound
+
 ## Install
 
 ```bash
