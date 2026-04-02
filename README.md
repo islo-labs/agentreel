@@ -86,6 +86,10 @@ agentcast/
 - Node.js 18+
 - Chrome (for URL screenshots)
 
+## Credits
+
+Default background music: ["Go Create"](https://uppbeat.io/track/all-good-folks/go-create) by All Good Folks (via [Uppbeat](https://uppbeat.io))
+
 ## License
 
 MIT
