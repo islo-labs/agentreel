@@ -993,7 +993,7 @@ const EndCard: React.FC<{ text: string; url?: string }> = ({ text, url }) => {
           letterSpacing: 3,
         }}
       >
-        MADE WITH AGENTCAST
+        MADE WITH AGENTREEL
       </div>
     </AbsoluteFill>
   );

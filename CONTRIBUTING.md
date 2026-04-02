@@ -1,10 +1,10 @@
-# Contributing to agentcast
+# Contributing to agentreel
 
 ## Setup
 
 ```bash
-git clone git@github.com:islo-labs/agentcast.git
-cd agentcast
+git clone git@github.com:islo-labs/agentreel.git
+cd agentreel
 npm install
 
 # Python env for demo recording
@@ -15,10 +15,10 @@ uv pip install browser-use playwright anthropic
 ## Running locally
 
 ```bash
-node bin/agentcast.mjs --help
-node bin/agentcast.mjs --cmd "echo hello" -p "test"
+node bin/agentreel.mjs --help
+node bin/agentreel.mjs --cmd "echo hello" -p "test"
 
-# Preview video template in browser:
+# Preview video template:
 npx remotion studio
 ```
 
@@ -26,8 +26,8 @@ npx remotion studio
 
 | File | What it does |
 |------|-------------|
-| `bin/agentcast.mjs` | CLI: session parse → detect → capture → render |
+| `bin/agentreel.mjs` | CLI: session parse → detect → capture → render |
 | `scripts/cli_demo.py` | Claude plans demo, records in PTY, extracts highlights |
-| `scripts/browser_demo.py` | Browser demo via Playwright (coming soon) |
+| `scripts/browser_demo.py` | Browser demo via Playwright |
 | `src/CastVideo.tsx` | Remotion video composition |
 | `src/types.ts` | TypeScript types for highlights |
