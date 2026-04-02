@@ -101,6 +101,23 @@ export const CastVideo: React.FC<CastProps> = ({
       {/* Subtle animated glow blobs in background */}
       <AnimatedBackground frame={frame} duration={durationInFrames} />
 
+      {/* Global watermark — always visible */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 28,
+          width: "100%",
+          textAlign: "center",
+          zIndex: 5,
+          fontFamily: MONO,
+          fontSize: 12,
+          color: "rgba(255,255,255,0.18)",
+          letterSpacing: 2,
+        }}
+      >
+        made with ♥ by agentreel
+      </div>
+
       <MusicTrack />
 
       <Sequence durationInFrames={titleFrames}>
@@ -993,7 +1010,7 @@ const EndCard: React.FC<{ text: string; url?: string }> = ({ text, url }) => {
           letterSpacing: 3,
         }}
       >
-        MADE WITH AGENTREEL
+        made with ♥ by agentreel
       </div>
     </AbsoluteFill>
   );
