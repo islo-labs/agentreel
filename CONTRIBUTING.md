@@ -1,69 +1,38 @@
 # Contributing to agentcast
 
-Thanks for your interest in contributing!
-
-## Development setup
+## Setup
 
 ```bash
 git clone git@github.com:islo-labs/agentcast.git
 cd agentcast
-
-# Go CLI
 make build
-
-# Remotion video renderer
 cd web && npm install && cd ..
 ```
 
 ## Running locally
 
 ```bash
-# Build and run
-make build
 ./bin/agentcast --help
+./bin/agentcast --cmd "echo hello" -p "test"
 
-# Run directly
-go run ./cmd/cast --help
-
-# Preview the video template in browser
+# Preview the video template:
 cd web && npm run dev
 ```
 
-## Testing
+## Architecture
 
-```bash
-# Go tests
-make test
-
-# Render a test video with default props
-cd web && npm run render
-```
-
-## Project layout
-
-| Directory | What it does |
+| Component | What it does |
 |-----------|-------------|
-| `cmd/cast/` | CLI entry point |
-| `internal/cmd/` | Cobra command definitions |
-| `internal/session/` | Parses Claude Code JSONL session logs |
-| `internal/recorder/` | PTY-based terminal recording |
-| `internal/render/` | Go-native GIF rendering |
-| `internal/vt/` | Minimal VT100 terminal emulator |
-| `web/src/` | Remotion video composition (React) |
+| `internal/cmd/root.go` | CLI orchestrator: session → detect → capture → render |
+| `internal/capture/agent.go` | Calls Python scripts for recording + highlights |
+| `internal/session/` | Parses Claude Code JSONL, detects CLI vs browser |
+| `scripts/cli_demo.py` | Claude plans demo, records in PTY, extracts highlights |
+| `scripts/browser_demo.py` | Browser demo via Playwright (coming soon) |
+| `web/src/CastVideo.tsx` | Remotion video composition |
 
 ## Making changes
 
-### Go CLI
-The CLI is in `internal/cmd/root.go`. It orchestrates: screenshot -> session parse -> Remotion render.
-
-### Video template
-The video is a Remotion composition at `web/src/CastVideo.tsx`. Edit it and preview with `npm run dev` in the `web/` directory. Props are defined in `web/src/types.ts`.
-
-### Session parser
-`internal/session/parse.go` reads Claude Code's JSONL format. If the format changes, this is where to update.
-
-## Pull requests
-
-- Keep PRs focused on a single change
-- Add tests for new Go code
-- Test the video renders before submitting: `cd web && npm run render`
+- **Video template**: Edit `web/src/CastVideo.tsx`, preview with `cd web && npm run dev`
+- **CLI pipeline**: Edit `internal/cmd/root.go`
+- **Demo recording**: Edit `scripts/cli_demo.py`
+- **Session detection**: Edit `internal/session/detect.go`

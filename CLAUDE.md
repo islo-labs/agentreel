@@ -1,34 +1,18 @@
 # agentcast
 
-CLI tool for recording and sharing agent terminal sessions.
+CLI tool that turns Claude Code sessions into viral demo videos.
 
 ## Build & Run
 
 ```bash
-make build        # build binary to ./bin/cast
-make install      # install to $GOPATH/bin
-go run ./cmd/cast  # run directly
+make build           # build to ./bin/agentcast
+go run ./cmd/cast    # run directly
 ```
 
-## Test
+## Architecture
 
-```bash
-make test          # run all tests
-go test ./internal/asciicast/...  # test specific package
-```
-
-## Lint
-
-```bash
-make lint          # requires golangci-lint
-```
-
-## Project Structure
-
-- `cmd/cast/` — entry point
-- `internal/cmd/` — cobra command definitions
-- `internal/asciicast/` — asciicast v2 format library
-- `internal/recorder/` — PTY recording engine
-- `internal/player/` — terminal playback engine
-- `internal/storage/` — local recording management
-- `internal/upload/` — push/share HTTP client
+- `internal/cmd/root.go` — CLI orchestrator
+- `internal/capture/agent.go` — calls Python scripts for recording + highlights
+- `internal/session/` — Claude Code JSONL parser + auto-detection
+- `scripts/cli_demo.py` — Claude-powered demo recording
+- `web/src/` — Remotion video components

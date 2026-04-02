@@ -1,24 +1,17 @@
 # agentcast
 
-Turn your Claude Code sessions into viral videos.
+Turn Claude Code sessions into viral demo videos.
 
 <p align="center">
   <img src="demo.gif" alt="agentcast demo" width="600" />
 </p>
 
-```bash
-agentcast
-```
-
-One command. It takes a screenshot of your result, reads the Claude Code session log, and renders a polished video — prompt, result, stats.
-
 ## How it works
 
-1. **Screenshot** — captures your screen (or a URL via headless Chrome)
-2. **Session** — reads the Claude Code JSONL log for the prompt, timing, and action count
-3. **Video** — renders a 1080x1080 MP4 with [Remotion](https://remotion.dev): typing animation, screenshot reveal, stats card
-
-The output is ready for Twitter/X, LinkedIn, or anywhere you want to flex.
+1. Reads your Claude Code session to understand what was built
+2. Claude plans and executes a demo of your CLI tool (or screenshots your web app)
+3. Claude picks the highlights — the 3-4 best moments
+4. Renders a Screen Studio-quality video with music, cursor, and transitions
 
 ## Install
 
@@ -27,56 +20,58 @@ git clone git@github.com:islo-labs/agentcast.git
 cd agentcast
 make build
 cd web && npm install && cd ..
+
+# Set up Python env for demo recording
+cd scripts && uv venv .venv && source .venv/bin/activate
+uv pip install browser-use playwright anthropic
+playwright install chromium
 ```
 
 ## Usage
 
 ```bash
-# After Claude finishes, just:
+# Auto-detect from your last Claude session:
 agentcast
 
-# Screenshot a specific URL:
-agentcast http://localhost:3000
+# Manual CLI demo:
+agentcast --cmd "npx @islo-labs/overtime" -p "Cron for AI agents"
 
-# Use an existing screenshot:
-agentcast --screenshot result.png
+# Manual browser demo:
+agentcast --url http://localhost:3000 -p "My web app"
 
-# Override the prompt text:
-agentcast -p "Build me a landing page"
-
-# Point to a specific session:
-agentcast --session ~/.claude/projects/.../session.jsonl
-
-# Custom output path:
-agentcast -o my-video.mp4
+# With options:
+agentcast --cmd "npx my-tool" \
+  --title "my-tool" \
+  --prompt "What the tool does" \
+  --music ~/music/track.mp3 \
+  --output demo.mp4
 ```
 
-## What the video looks like
+## What you get
 
-| Act 1 | Act 2 | Act 3 |
-|-------|-------|-------|
-| "I asked Claude to..." | Your screenshot | Duration, files, cost |
-| Typing animation | Scale-in with shadow | Spring-animated stats |
+A 15-20 second video with:
+- **Title card** with your tool name
+- **3-4 highlight clips** — terminal window on gradient background, text typing with cursor, smooth transitions
+- **End card** with install command
+- **Background music** with fade in/out
 
-10 seconds. 1080x1080. Spring animations. Dark theme. Ready for Twitter/X.
+1080x1080, ready for Twitter/X, LinkedIn, Reels.
 
 ## Project structure
 
 ```
 agentcast/
-├── cmd/cast/         # Go CLI entry point
+├── cmd/cast/main.go           # entry point
 ├── internal/
-│   ├── cmd/          # CLI commands
-│   ├── session/      # Claude Code JSONL parser
-│   ├── recorder/     # Terminal recording (PTY capture)
-│   ├── player/       # Terminal playback
-│   ├── asciicast/    # Asciicast v2 format
-│   ├── render/       # GIF renderer (Go-native)
-│   ├── vt/           # Minimal VT100 terminal emulator
-│   └── storage/      # Local recording management
-├── web/              # Remotion video renderer
-│   └── src/          # React components for the video
-├── go.mod
+│   ├── cmd/root.go            # orchestrator
+│   ├── capture/agent.go       # calls Python scripts
+│   └── session/               # Claude Code session parser + detection
+├── scripts/
+│   ├── cli_demo.py            # Claude plans + records CLI demo + highlights
+│   └── browser_demo.py        # browser demo (coming soon)
+├── web/
+│   ├── src/                   # Remotion video components
+│   └── public/music.mp3       # default background track
 └── Makefile
 ```
 
@@ -84,7 +79,8 @@ agentcast/
 
 - Go 1.21+
 - Node.js 18+
-- Chrome (for URL screenshots)
+- Python 3.10+ with uv
+- Claude CLI (`claude`)
 
 ## Credits
 

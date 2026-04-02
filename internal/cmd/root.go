@@ -10,88 +10,170 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/adamgold/agentcast/internal/capture"
+	"github.com/adamgold/agentcast/internal/session"
 )
 
 var version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:   "agentcast",
-	Short: "Generate a viral demo video for your CLI tool",
-	Long: `Records your CLI tool, picks the highlights, and renders
-a Screen Studio-quality video. Just tell it what to run.
+	Short: "Turn Claude Code sessions into viral demo videos",
+	Long: `Run after Claude builds something. Reads the session, figures out
+what was built, records a demo, picks the highlights, renders a video.
 
-  agentcast --cmd "npx @islo-labs/overtime" -p "Cron for AI agents"`,
+  agentcast                                          # auto-detect from session
+  agentcast --cmd "npx @islo-labs/overtime"           # manual CLI demo
+  agentcast --url http://localhost:3000               # manual browser demo`,
 	RunE: runAgentcast,
 }
 
 func runAgentcast(cmd *cobra.Command, args []string) error {
 	cmdFlag, _ := cmd.Flags().GetString("cmd")
+	urlFlag, _ := cmd.Flags().GetString("url")
 	promptFlag, _ := cmd.Flags().GetString("prompt")
 	output, _ := cmd.Flags().GetString("output")
 	title, _ := cmd.Flags().GetString("title")
 	musicFlag, _ := cmd.Flags().GetString("music")
+	sessionFlag, _ := cmd.Flags().GetString("session")
 
-	if cmdFlag == "" {
-		return fmt.Errorf("--cmd is required. Example: agentcast --cmd \"npx my-tool\"")
-	}
 	if output == "" {
 		output = "agentcast.mp4"
 	}
 
 	workDir, _ := os.Getwd()
-	context := promptFlag
 
-	// 1. Record the CLI demo (Claude plans + executes commands)
+	// --- Resolve what to demo ---
+	demoCmd := cmdFlag
+	demoURL := urlFlag
+	prompt := promptFlag
+
+	// If no manual flags, read the Claude session to auto-detect
+	if demoCmd == "" && demoURL == "" {
+		var sessionPath string
+		if sessionFlag != "" {
+			sessionPath = sessionFlag
+		} else {
+			var err error
+			sessionPath, err = session.FindLatestSession()
+			if err != nil {
+				return fmt.Errorf("no session found and no --cmd or --url provided.\n\nUsage:\n  agentcast --cmd \"npx my-tool\" -p \"what it does\"\n  agentcast --url http://localhost:3000")
+			}
+		}
+
+		fmt.Fprintf(os.Stderr, "Reading session: %s\n", filepath.Base(sessionPath))
+		sess, err := session.Parse(sessionPath)
+		if err != nil {
+			return fmt.Errorf("parse session: %w", err)
+		}
+
+		if prompt == "" {
+			prompt = sess.Prompt
+		}
+
+		detected := session.DetectResult(sess)
+		switch detected.Type {
+		case session.ResultCLI:
+			demoCmd = detected.Command
+			if detected.WorkDir != "" {
+				workDir = detected.WorkDir
+			}
+			fmt.Fprintf(os.Stderr, "Detected CLI: %s\n", demoCmd)
+		case session.ResultBrowser:
+			demoURL = detected.Command
+			fmt.Fprintf(os.Stderr, "Detected browser: %s\n", demoURL)
+		default:
+			return fmt.Errorf("couldn't detect what was built. Use --cmd or --url to specify")
+		}
+	}
+
+	// --- Record the demo ---
+	if demoCmd != "" {
+		return runCLIDemo(demoCmd, workDir, prompt, title, output, musicFlag)
+	}
+	if demoURL != "" {
+		return runBrowserDemo(demoURL, prompt, title, output, musicFlag)
+	}
+
+	return fmt.Errorf("nothing to demo. Use --cmd or --url")
+}
+
+func runCLIDemo(demoCmd, workDir, prompt, title, output, musicFlag string) error {
+	// 1. Record
 	fmt.Fprintf(os.Stderr, "Step 1/3: Recording CLI demo...\n")
-	castPath, err := capture.AgentRecordCLI(cmdFlag, workDir, context)
+	castPath, err := capture.AgentRecordCLI(demoCmd, workDir, prompt)
 	if err != nil {
 		return fmt.Errorf("record: %w", err)
 	}
 
-	// 2. Extract highlights from the recording
+	// 2. Highlights
 	fmt.Fprintf(os.Stderr, "Step 2/3: Extracting highlights...\n")
-	highlightsPath, err := capture.ExtractHighlights(castPath, context)
+	highlightsPath, err := capture.ExtractHighlights(castPath, prompt)
 	if err != nil {
 		return fmt.Errorf("highlights: %w", err)
 	}
-
-	// Read highlights JSON
-	highlightsData, err := os.ReadFile(highlightsPath)
+	highlights, err := readHighlights(highlightsPath)
 	if err != nil {
-		return fmt.Errorf("read highlights: %w", err)
+		return err
 	}
-
-	var highlights []interface{}
-	if err := json.Unmarshal(highlightsData, &highlights); err != nil {
-		return fmt.Errorf("parse highlights: %w", err)
-	}
-
 	fmt.Fprintf(os.Stderr, "  %d highlights extracted\n", len(highlights))
 
-	// 3. Render via Remotion
+	// 3. Render
+	return renderVideo(title, demoCmd, prompt, highlights, output, musicFlag)
+}
+
+func runBrowserDemo(demoURL, prompt, title, output, musicFlag string) error {
+	// 1. Record browser
+	fmt.Fprintf(os.Stderr, "Step 1/3: Recording browser demo...\n")
+	task := prompt
+	if task == "" {
+		task = "Explore the main features of this app"
+	}
+	_, err := capture.AgentRecordBrowser(demoURL, task)
+	if err != nil {
+		return fmt.Errorf("browser demo: %w", err)
+	}
+
+	// TODO: extract highlights from browser recording + render
+	fmt.Fprintf(os.Stderr, "Browser demo recorded. Video rendering coming soon.\n")
+	return nil
+}
+
+func readHighlights(path string) ([]interface{}, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read highlights: %w", err)
+	}
+	var highlights []interface{}
+	if err := json.Unmarshal(data, &highlights); err != nil {
+		return nil, fmt.Errorf("parse highlights: %w", err)
+	}
+	return highlights, nil
+}
+
+func renderVideo(title, endText, subtitle string, highlights []interface{}, output, musicFlag string) error {
 	fmt.Fprintf(os.Stderr, "Step 3/3: Rendering video...\n")
 
-	// Copy custom music if provided
 	webDir := findWebDir()
+
+	// Copy custom music if provided
 	if musicFlag != "" {
 		publicDir := filepath.Join(webDir, "public")
 		os.MkdirAll(publicDir, 0o755)
 		if data, err := os.ReadFile(musicFlag); err == nil {
 			os.WriteFile(filepath.Join(publicDir, "music.mp3"), data, 0o644)
-			fmt.Fprintf(os.Stderr, "  Using music: %s\n", musicFlag)
 		}
 	}
 
 	videoTitle := title
 	if videoTitle == "" {
-		videoTitle = cmdFlag
+		videoTitle = endText
 	}
 
 	props := map[string]interface{}{
 		"title":      videoTitle,
-		"subtitle":   promptFlag,
+		"subtitle":   subtitle,
 		"highlights": highlights,
-		"endText":    cmdFlag,
+		"endText":    endText,
 	}
 	propsJSON, _ := json.Marshal(props)
 	absOutput, _ := filepath.Abs(output)
@@ -143,9 +225,11 @@ func Execute() int {
 func init() {
 	rootCmd.Version = version
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
-	rootCmd.Flags().StringP("cmd", "c", "", "CLI command to demo (required)")
+	rootCmd.Flags().StringP("cmd", "c", "", "CLI command to demo")
+	rootCmd.Flags().StringP("url", "u", "", "URL to demo (browser mode)")
 	rootCmd.Flags().StringP("prompt", "p", "", "description of what the tool does")
-	rootCmd.Flags().StringP("title", "t", "", "video title (defaults to command)")
+	rootCmd.Flags().StringP("title", "t", "", "video title")
 	rootCmd.Flags().StringP("output", "o", "", "output file (default: agentcast.mp4)")
 	rootCmd.Flags().String("music", "", "path to background music mp3")
+	rootCmd.Flags().String("session", "", "path to Claude Code session .jsonl")
 }
