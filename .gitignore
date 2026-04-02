@@ -1,21 +1,7 @@
-# Binaries
-bin/
-cast
-*.exe
-
-# Output
+node_modules/
 out/
 *.mp4
-*.gif
-!demo.gif
-
-# Node
-web/node_modules/
-web/.remotion/
-
-# OS
+.remotion/
 .DS_Store
-
-# Test artifacts
-internal/auth/
-web/public/
+scripts/.venv/
+public/screenshot.png

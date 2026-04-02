@@ -1,18 +1,20 @@
 # agentcast
 
-CLI tool that turns Claude Code sessions into viral demo videos.
+CLI that turns Claude Code sessions into viral demo videos.
 
-## Build & Run
+## Run
 
 ```bash
-make build           # build to ./bin/agentcast
-go run ./cmd/cast    # run directly
+npm install
+node bin/agentcast.mjs --help
+npx remotion studio  # preview video template
 ```
 
 ## Architecture
 
-- `internal/cmd/root.go` — CLI orchestrator
-- `internal/capture/agent.go` — calls Python scripts for recording + highlights
-- `internal/session/` — Claude Code JSONL parser + auto-detection
-- `scripts/cli_demo.py` — Claude-powered demo recording
-- `web/src/` — Remotion video components
+- `bin/agentcast.mjs` — CLI orchestrator (session → detect → capture → render)
+- `scripts/cli_demo.py` — Claude plans + records CLI demo + extracts highlights
+- `scripts/browser_demo.py` — browser demo via Playwright (future)
+- `src/CastVideo.tsx` — Remotion video composition
+- `src/types.ts` — highlight types
+- `public/music.mp3` — default background track

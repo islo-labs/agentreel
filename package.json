@@ -1,0 +1,36 @@
+{
+  "name": "agentcast",
+  "version": "0.1.0",
+  "description": "Turn Claude Code sessions into viral demo videos",
+  "bin": {
+    "agentcast": "./bin/agentcast.mjs"
+  },
+  "scripts": {
+    "dev": "remotion studio",
+    "render": "remotion render CastVideo out/cast.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4",
+    "remotion": "^4",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/react": "^18",
+    "typescript": "^5"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "scripts/",
+    "public/",
+    "remotion.config.*",
+    "tsconfig.json"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/islo-labs/agentcast.git"
+  },
+  "keywords": ["cli", "demo", "video", "claude", "agent", "remotion"]
+}
