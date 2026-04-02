@@ -2,7 +2,7 @@
 
 Turn your Claude Code sessions into viral demo videos.
 
-https://github.com/user-attachments/assets/070ee610-298c-4989-8d7e-369ca495469e
+https://github.com/user-attachments/assets/474fd85d-3b35-48f4-82b8-1b337840fb51
 
 ## Install
 

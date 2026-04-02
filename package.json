@@ -1,6 +1,6 @@
 {
   "name": "agentreel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Turn Claude Code sessions into viral demo videos",
   "bin": {
     "agentreel": "./bin/agentreel.mjs"
@@ -32,5 +32,12 @@
     "type": "git",
     "url": "git+https://github.com/islo-labs/agentreel.git"
   },
-  "keywords": ["cli", "demo", "video", "claude", "agent", "remotion"]
+  "keywords": [
+    "cli",
+    "demo",
+    "video",
+    "claude",
+    "agent",
+    "remotion"
+  ]
 }
