@@ -30,7 +30,7 @@ agentreel --url http://localhost:3000       # browser demo
 2. Detects what was built — CLI tool or web app
 3. Claude plans and executes a demo (terminal or browser)
 4. Claude picks the 3-4 best highlight moments
-5. Renders a Screen Studio-quality video with music, transitions, and overlays
+5. Renders a polished video with music, transitions, and overlays
 6. Prompts you to share on Twitter
 
 ## What you get
