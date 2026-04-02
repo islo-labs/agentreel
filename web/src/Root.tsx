@@ -7,21 +7,18 @@ export const RemotionRoot: React.FC = () => {
     <Composition
       id="CastVideo"
       component={CastVideo}
-      durationInFrames={300}
+      durationInFrames={450}
       fps={30}
       width={1080}
       height={1080}
       defaultProps={defaultProps}
-      calculateMetadata={({ props }) => {
-        // 3 acts: prompt (2s) + result (4s) + stats (2s) + transitions
+      calculateMetadata={({ props }: { props: CastProps }) => {
         const fps = 30;
-        const promptFrames = fps * 2;
-        const resultFrames = fps * 4;
-        const statsFrames = fps * 3;
-        const transitionFrames = fps * 0.5 * 2;
+        const titleFrames = Math.round(2.5 * fps);
+        const highlightFrames = Math.round(4 * fps) * props.highlights.length;
+        const endFrames = Math.round(2.5 * fps);
         return {
-          durationInFrames:
-            promptFrames + resultFrames + statsFrames + transitionFrames,
+          durationInFrames: titleFrames + highlightFrames + endFrames,
         };
       }}
     />
