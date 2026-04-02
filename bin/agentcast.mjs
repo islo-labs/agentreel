@@ -26,7 +26,6 @@ function parseArgs() {
     else if (arg === "--output" || arg === "-o") flags.output = args[++i];
     else if (arg === "--music") flags.music = args[++i];
     else if (arg === "--session") flags.session = args[++i];
-    else if (arg === "--props") flags.props = args[++i];
     else if (arg === "--no-share") flags.noShare = true;
   }
   return flags;
@@ -343,15 +342,6 @@ async function main() {
   const flags = parseArgs();
   const output = flags.output || "agentcast.mp4";
   const noShare = flags.noShare;
-
-  // Direct props mode — render from a JSON file (for hand-crafted demos)
-  if (flags.props) {
-    const props = JSON.parse(readFileSync(flags.props, "utf-8"));
-    console.error("Rendering from props file...");
-    renderVideo(props, output, flags.music);
-    if (!noShare) await shareFlow(resolve(output), props.title || "agentcast");
-    return;
-  }
 
   let demoCmd = flags.cmd;
   let demoURL = flags.url;
