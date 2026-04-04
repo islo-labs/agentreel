@@ -114,18 +114,23 @@ def record_demo(steps: list[dict], workdir: str, output_path: str):
                 write_event("o", f"\x1b[38;5;245m# {desc}\x1b[0m\r\n")
                 time.sleep(0.3)
 
-            # Type the command character by character
-            write_event("o", "\x1b[38;5;76m$\x1b[0m ")
+            # Type the command character by character (no $ prompt — the renderer adds one)
+            write_event("o", "")
             for char in cmd:
                 write_event("o", char)
                 time.sleep(0.04)
             write_event("o", "\r\n")
             time.sleep(0.2)
 
-            # Execute in PTY
+            # Execute in PTY with sanitized env (hide username/hostname)
             pid, fd = pty.fork()
             if pid == 0:
                 os.chdir(workdir)
+                os.environ["PS1"] = "$ "
+                os.environ["PROMPT_COMMAND"] = ""
+                os.environ.pop("BASH_COMMAND", None)
+                # Suppress terminal title sequences (user@host)
+                os.environ["TERM"] = "dumb"
                 os.execvp("/bin/sh", ["/bin/sh", "-c", cmd])
             else:
                 deadline = time.time() + 15

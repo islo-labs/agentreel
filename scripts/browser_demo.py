@@ -124,7 +124,7 @@ def extract_highlights(video_path, task):
     return highlights
 
 
-async def record_browser_demo(url, task, output_path):
+async def record_browser_demo(url, task, output_path, auth_state=None):
     """Generate and run a Playwright demo with video recording."""
     from playwright.async_api import async_playwright
 
@@ -137,11 +137,15 @@ async def record_browser_demo(url, task, output_path):
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
+        ctx_opts = dict(
             viewport={"width": 1280, "height": 800},
             record_video_dir=video_dir,
             record_video_size={"width": 1280, "height": 800},
         )
+        if auth_state and os.path.isfile(auth_state):
+            ctx_opts["storage_state"] = auth_state
+            print(f"Using auth state: {auth_state}", file=sys.stderr)
+        context = await browser.new_context(**ctx_opts)
 
         # Inject click tracker — persists across navigations
         click_tracker_js = (
@@ -262,5 +266,15 @@ if __name__ == "__main__":
     else:
         url = sys.argv[1]
         output = sys.argv[2]
-        task = sys.argv[3] if len(sys.argv) > 3 else "Explore the main features"
-        asyncio.run(record_browser_demo(url, task, output))
+        # Parse remaining args: [task] [--auth <state_file>]
+        task = "Explore the main features"
+        auth_state = None
+        i = 3
+        while i < len(sys.argv):
+            if sys.argv[i] == "--auth" and i + 1 < len(sys.argv):
+                auth_state = sys.argv[i + 1]
+                i += 2
+            else:
+                task = sys.argv[i]
+                i += 1
+        asyncio.run(record_browser_demo(url, task, output, auth_state=auth_state))

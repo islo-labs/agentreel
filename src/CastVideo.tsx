@@ -673,17 +673,7 @@ const HighlightClip: React.FC<{
                 backgroundColor: "#50fa7b",
               }}
             />
-            <div
-              style={{
-                flex: 1,
-                textAlign: "center",
-                fontFamily: MONO,
-                fontSize: 12,
-                color: "rgba(255,255,255,0.25)",
-              }}
-            >
-              Terminal
-            </div>
+            <div style={{ flex: 1 }} />
           </div>
 
           {/* Terminal body */}

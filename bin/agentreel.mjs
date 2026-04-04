@@ -29,6 +29,7 @@ function parseArgs() {
     else if (arg === "--title" || arg === "-t") flags.title = args[++i];
     else if (arg === "--output" || arg === "-o") flags.output = args[++i];
     else if (arg === "--music") flags.music = args[++i];
+    else if (arg === "--auth" || arg === "-a") flags.auth = args[++i];
     else if (arg === "--no-share") flags.noShare = true;
   }
   return flags;
@@ -47,6 +48,7 @@ Flags:
   -p, --prompt <text>     description of what the tool does
   -t, --title <text>      video title
   -o, --output <file>     output file (default: agentreel.mp4)
+  -a, --auth <file>       Playwright storage state (cookies/auth) for browser demos
       --music <file>      path to background music mp3
       --no-share          skip the share prompt
   -h, --help              show help
@@ -128,13 +130,15 @@ function browserEnv() {
   return { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsersDir };
 }
 
-function recordBrowser(url, task) {
+function recordBrowser(url, task, authState) {
   const python = findPython();
   const script = join(ROOT, "scripts", "browser_demo.py");
   const outFile = join(tmpdir(), "agentreel-browser-demo.mp4");
 
   console.error(`Agent demoing browser app: ${url}`);
-  execFileSync(python, [script, url, outFile, task], {
+  const args = [script, url, outFile, task];
+  if (authState) args.push("--auth", authState);
+  execFileSync(python, args, {
     stdio: ["ignore", "inherit", "inherit"],
     env: browserEnv(),
     timeout: 300000,
@@ -428,7 +432,7 @@ async function main() {
 
     ensureBrowserDeps();
     console.error("Step 1/3: Recording browser demo...");
-    const videoPath = recordBrowser(demoURL, task);
+    const videoPath = recordBrowser(demoURL, task, flags.auth);
 
     // Copy video to Remotion public dir so it can be served
     const publicDir = join(ROOT, "public");

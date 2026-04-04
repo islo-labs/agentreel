@@ -35,57 +35,53 @@ export interface CastProps {
   title: string; // big opening title
   subtitle?: string; // smaller text under title
   highlights: Highlight[];
-  endText?: string; // closing CTA command, e.g. "npm install itsovertime"
-  endUrl?: string; // URL shown under CTA, e.g. "github.com/islo-labs/overtime"
+  endText?: string; // closing CTA command, e.g. "npx agentreel"
+  endUrl?: string; // URL shown under CTA, e.g. "github.com/islo-labs/agentreel"
   gradient?: [string, string]; // background gradient colors
 }
 
 export const defaultProps: CastProps = {
-  title: "itsovertime",
-  subtitle: "Cron for AI agents",
+  title: "agentreel",
+  subtitle: "Turn your apps into viral clips",
   highlights: [
     {
-      label: "Initialize",
+      label: "Record",
       overlay: "One command.",
       lines: [
-        { text: "npx @islo-labs/overtime init", isPrompt: true },
+        { text: "npx agentreel --cmd 'my-cli-tool'", isPrompt: true },
         { text: "" },
-        { text: "  itsovertime  Cron for AI agents", bold: true, color: "#bd93f9" },
+        { text: "  agentreel  Turn your apps into viral clips", bold: true, color: "#bd93f9" },
         { text: "" },
-        { text: "  ✓ Created overtime.yml", color: "#50fa7b" },
+        { text: "  ✓ Recording CLI demo...", color: "#50fa7b" },
       ],
     },
     {
-      label: "Configure",
-      overlay: "Plain English schedules.",
+      label: "Highlight",
+      overlay: "AI picks the best moments.",
       lines: [
-        { text: "cat overtime.yml", isPrompt: true },
-        { text: "shifts:", dim: true },
-        { text: "  - name: pr-review", color: "#f8f8f2" },
-        { text: '    schedule: "every hour"', color: "#50fa7b" },
-        { text: '    task: "Review open PRs..."', color: "#50fa7b" },
-        { text: "    notify: slack", color: "#f8f8f2" },
+        { text: "Extracting highlights...", dim: true },
+        { text: "" },
+        { text: "  ✓ 4 highlights extracted", color: "#50fa7b" },
+        { text: '    "Initialize" — first run', color: "#f8f8f2" },
+        { text: '    "Configure" — setup step', color: "#f8f8f2" },
+        { text: '    "Run" — the wow moment', color: "#f1fa8c" },
       ],
-      zoomLine: 3,
+      zoomLine: 2,
     },
     {
-      label: "Run",
-      overlay: "Fully autonomous.",
+      label: "Share",
+      overlay: "Ready to post.",
       lines: [
-        { text: "npx @islo-labs/overtime", isPrompt: true },
+        { text: "Rendering video...", dim: true },
         { text: "" },
-        { text: "┌─ itsovertime ───────────────────────────┐", color: "#bd93f9" },
-        { text: "│ pr-review    every hour     ⟳ running   │", color: "#f1fa8c" },
-        { text: "│ dep-updates  Mon at 2am     idle        │", dim: true },
-        { text: "└──────────────────────────────────────────┘", color: "#bd93f9" },
+        { text: "  Done: agentreel.mp4 (2.4 MB)", color: "#50fa7b" },
         { text: "" },
-        { text: "  ✓ PR #42 reviewed — approved", color: "#50fa7b" },
-        { text: "  ✓ PR #43 reviewed — changes requested", color: "#f1fa8c" },
+        { text: "  Share to Twitter? [Y/n]", color: "#f8f8f2" },
       ],
-      zoomLine: 3,
+      zoomLine: 2,
     },
   ],
-  endText: "npx @islo-labs/overtime",
-  endUrl: "github.com/islo-labs/overtime",
+  endText: "npx agentreel",
+  endUrl: "github.com/islo-labs/agentreel",
   gradient: ["#0f0f1a", "#1a0f2e"],
 };
