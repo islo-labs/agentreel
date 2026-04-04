@@ -30,6 +30,7 @@ function parseArgs() {
     else if (arg === "--output" || arg === "-o") flags.output = args[++i];
     else if (arg === "--music") flags.music = args[++i];
     else if (arg === "--auth" || arg === "-a") flags.auth = args[++i];
+    else if (arg === "--guidelines" || arg === "-g") flags.guidelines = args[++i];
     else if (arg === "--no-share") flags.noShare = true;
   }
   return flags;
@@ -49,6 +50,7 @@ Flags:
   -t, --title <text>      video title
   -o, --output <file>     output file (default: agentreel.mp4)
   -a, --auth <file>       Playwright storage state (cookies/auth) for browser demos
+  -g, --guidelines <text>  guidelines for highlight generation (e.g. "focus on speed")
       --music <file>      path to background music mp3
       --no-share          skip the share prompt
   -h, --help              show help
@@ -111,13 +113,14 @@ function recordCLI(command, workDir, context) {
   return outFile;
 }
 
-function extractHighlightsFromCast(castPath, context) {
+function extractHighlightsFromCast(castPath, context, guidelines) {
   const python = findPython();
   const script = join(ROOT, "scripts", "cli_demo.py");
   const outFile = castPath + "-highlights.json";
 
   const args = [script, "--highlights", castPath, outFile];
   if (context) args.push(context);
+  if (guidelines) args.push(guidelines);
 
   execFileSync(python, args, { stdio: ["ignore", "inherit", "inherit"], env: process.env });
   return outFile;
@@ -160,12 +163,28 @@ function extractBrowserHighlights(videoPath, task) {
 
 // ── Browser Highlight Builder ───────────────────────────────
 
-function buildBrowserHighlights(clicks, videoPath, task) {
+function buildBrowserHighlights(clicks, videoPath, task, guidelines) {
   const CLIP_DUR = 7;
   const MIN_HIGHLIGHTS = 3;
   const MAX_HIGHLIGHTS = 4;
-  const labels = ["Overview", "Interact", "Navigate", "Result"];
-  const overlays = ["**First look**", "**Key action**", "**Exploring**", "**The result**"];
+  // Ask Claude to generate labels/overlays based on the task
+  let labels, overlays;
+  try {
+    const guidelinesLine = guidelines ? `\nGuidelines: ${guidelines}` : "";
+    const genPrompt = `Generate exactly 4 highlight labels and overlay captions for a short browser demo video.
+Task: ${task}${guidelinesLine}
+
+Return a JSON object: {"labels": ["word1", "word2", "word3", "word4"], "overlays": ["**caption1**", "**caption2**", "**caption3**", "**caption4**"]}
+Labels: 1-2 words each, specific to this app (not generic). Overlays: short punchy captions with **markdown bold** for emphasis. Return ONLY JSON.`;
+    const result = execFileSync("claude", ["-p", genPrompt, "--output-format", "text"], {
+      encoding: "utf-8", timeout: 30000, stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const parsed = JSON.parse(result.replace(/```json?\n?/g, "").replace(/```/g, "").trim());
+    labels = parsed.labels?.length >= 4 ? parsed.labels : null;
+    overlays = parsed.overlays?.length >= 4 ? parsed.overlays : null;
+  } catch { /* fall through */ }
+  if (!labels) labels = ["Overview", "Interact", "Navigate", "Result"];
+  if (!overlays) overlays = ["**First look**", "**Key action**", "**Exploring**", "**The result**"];
 
   // Estimate video duration from last click or default to 25s
   const lastClickTime = clicks.length > 0 ? clicks[clicks.length - 1].timeSec : 0;
@@ -409,7 +428,7 @@ async function main() {
     const castPath = recordCLI(demoCmd, process.cwd(), prompt);
 
     console.error("Step 2/3: Extracting highlights...");
-    const highlightsPath = extractHighlightsFromCast(castPath, prompt);
+    const highlightsPath = extractHighlightsFromCast(castPath, prompt, flags.guidelines);
     const highlights = JSON.parse(readFileSync(highlightsPath, "utf-8"));
     console.error(`  ${highlights.length} highlights extracted`);
 
@@ -449,7 +468,7 @@ async function main() {
       console.error(`  ${allClicks.length} clicks captured`);
     }
 
-    const highlights = buildBrowserHighlights(allClicks, videoPath, task);
+    const highlights = buildBrowserHighlights(allClicks, videoPath, task, flags.guidelines);
 
     console.error("Step 3/3: Rendering video...");
     await renderVideo({

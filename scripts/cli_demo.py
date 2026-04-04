@@ -195,7 +195,7 @@ def record_demo(steps: list[dict], workdir: str, output_path: str):
     print(f"Saved: {output_path}", file=sys.stderr)
 
 
-def extract_highlights(cast_path: str, context: str) -> list[dict]:
+def extract_highlights(cast_path: str, context: str, guidelines: str = "") -> list[dict]:
     """Ask Claude to pick 3-4 highlight moments from the recorded session."""
     # Read the asciicast and strip to just the text content
     lines_output = []
@@ -214,13 +214,15 @@ def extract_highlights(cast_path: str, context: str) -> list[dict]:
     # Clean ANSI for Claude to read, but keep the raw for display
     clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw_output)
 
+    guidelines_block = f"\n\nAdditional guidelines: {guidelines}" if guidelines else ""
+
     prompt = f"""You are creating a highlights reel for a CLI tool demo video. Here is the full terminal output:
 
 ---
 {clean[:3000]}
 ---
 
-Context: {context}
+Context: {context}{guidelines_block}
 
 Pick 3-4 highlight moments that would look impressive in a short video. For each highlight, return:
 - "label": short label (1-2 words) like "Initialize", "Configure", "Run", "Results"
@@ -274,8 +276,9 @@ if __name__ == "__main__":
         cast_file = sys.argv[2]
         output = sys.argv[3]
         context = sys.argv[4] if len(sys.argv) > 4 else ""
+        guidelines = sys.argv[5] if len(sys.argv) > 5 else ""
         print(f"Extracting highlights from: {cast_file}", file=sys.stderr)
-        highlights = extract_highlights(cast_file, context)
+        highlights = extract_highlights(cast_file, context, guidelines)
         with open(output, "w") as f:
             json.dump(highlights, f, indent=2)
         print(f"Saved {len(highlights)} highlights to: {output}", file=sys.stderr)
