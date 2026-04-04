@@ -11,7 +11,7 @@ import {
   Easing,
   OffthreadVideo,
 } from "remotion";
-import { CastProps, Highlight } from "./types";
+import { CastProps, Highlight, ClickEvent } from "./types";
 
 const ACCENT = "#50fa7b";
 const DIM = "#6272a4";
@@ -21,9 +21,19 @@ const TITLE_BAR = "#1e1f29";
 const CURSOR_COLOR = "#f8f8f2";
 
 const TITLE_DUR = 2.5;
-const HIGHLIGHT_DUR = 4.5;
+const TERMINAL_HIGHLIGHT_DUR = 4.5;
+const BROWSER_HIGHLIGHT_DUR = 7.0;
 const TRANSITION_DUR = 0.5;
 const END_DUR = 3.5;
+
+const VIEWPORT_W = 1280;
+const VIEWPORT_H = 800;
+const VIDEO_AREA_W = 880;
+const VIDEO_AREA_H = 550; // 880 * 10/16
+
+function getHighlightDuration(h: Highlight): number {
+  return h.videoSrc ? BROWSER_HIGHLIGHT_DUR : TERMINAL_HIGHLIGHT_DUR;
+}
 
 const SANS =
   '-apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif';
@@ -83,8 +93,18 @@ export const CastVideo: React.FC<CastProps> = ({
   const g = gradient || ["#0f0f1a", "#1a0f2e"];
 
   const titleFrames = Math.round(TITLE_DUR * fps);
-  const highlightFrames = Math.round(HIGHLIGHT_DUR * fps);
   const endFrames = Math.round(END_DUR * fps);
+
+  // Compute per-highlight durations and cumulative offsets
+  const hlDurations = highlights.map((h) =>
+    Math.round(getHighlightDuration(h) * fps)
+  );
+  const hlOffsets: number[] = [];
+  let cumulative = 0;
+  for (const dur of hlDurations) {
+    hlOffsets.push(cumulative);
+    cumulative += dur;
+  }
 
   // Animated gradient — hue rotates slowly over time
   const gradAngle = interpolate(frame, [0, durationInFrames], [125, 200], {
@@ -123,32 +143,37 @@ export const CastVideo: React.FC<CastProps> = ({
         <TitleCard title={title} subtitle={subtitle} />
       </Sequence>
 
-      {highlights.map((h, i) => (
-        <Sequence
-          key={i}
-          from={titleFrames + i * highlightFrames}
-          durationInFrames={highlightFrames}
-        >
-          {h.videoSrc ? (
-            <BrowserHighlightClip
-              highlight={h}
-              index={i}
-              total={highlights.length}
-              transition={TRANSITIONS[i % TRANSITIONS.length]}
-            />
-          ) : (
-            <HighlightClip
-              highlight={h}
-              index={i}
-              total={highlights.length}
-              transition={TRANSITIONS[i % TRANSITIONS.length]}
-            />
-          )}
-        </Sequence>
-      ))}
+      {highlights.map((h, i) => {
+        const dur = getHighlightDuration(h);
+        return (
+          <Sequence
+            key={i}
+            from={titleFrames + hlOffsets[i]}
+            durationInFrames={hlDurations[i]}
+          >
+            {h.videoSrc ? (
+              <BrowserHighlightClip
+                highlight={h}
+                index={i}
+                total={highlights.length}
+                transition={TRANSITIONS[i % TRANSITIONS.length]}
+                durationSec={dur}
+              />
+            ) : (
+              <HighlightClip
+                highlight={h}
+                index={i}
+                total={highlights.length}
+                transition={TRANSITIONS[i % TRANSITIONS.length]}
+                durationSec={dur}
+              />
+            )}
+          </Sequence>
+        );
+      })}
 
       <Sequence
-        from={titleFrames + highlights.length * highlightFrames}
+        from={titleFrames + cumulative}
         durationInFrames={endFrames}
       >
         <EndCard text={endText || title} url={endUrl} />
@@ -325,12 +350,15 @@ const Cursor: React.FC<{ visible: boolean; blink?: boolean }> = ({
 
 // ─── Text Overlay (colored accent words) ──────────────────
 
-const TextOverlay: React.FC<{ text: string }> = ({ text }) => {
+const TextOverlay: React.FC<{ text: string; durationSec: number }> = ({
+  text,
+  durationSec,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   const showAt = fps * 1.8;
-  const hideAt = fps * (HIGHLIGHT_DUR - 0.8);
+  const hideAt = fps * (durationSec - 0.8);
 
   const enterProgress = spring({
     fps,
@@ -472,7 +500,8 @@ const HighlightClip: React.FC<{
   index: number;
   total: number;
   transition: TransitionStyle;
-}> = ({ highlight, index, total, transition }) => {
+  durationSec: number;
+}> = ({ highlight, index, total, transition, durationSec }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -491,7 +520,7 @@ const HighlightClip: React.FC<{
   });
   const fadeOut = interpolate(
     frame,
-    [fps * (HIGHLIGHT_DUR - TRANSITION_DUR), fps * HIGHLIGHT_DUR],
+    [fps * (durationSec - TRANSITION_DUR), fps * durationSec],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
@@ -510,7 +539,7 @@ const HighlightClip: React.FC<{
   );
   const zoomOut = interpolate(
     frame,
-    [fps * 2.5, fps * (HIGHLIGHT_DUR - 0.5)],
+    [fps * 2.5, fps * (durationSec - 0.5)],
     [1.12, 1.02],
     {
       extrapolateLeft: "clamp",
@@ -523,7 +552,7 @@ const HighlightClip: React.FC<{
   // Vertical pan
   const panY = interpolate(
     frame,
-    [fps * 0.8, fps * 2.0, fps * 3.5],
+    [fps * 0.8, fps * 2.0, fps * (durationSec - 1.0)],
     [0, -15, 5],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
@@ -737,7 +766,9 @@ const HighlightClip: React.FC<{
       <MousePointer />
 
       {/* Text overlay */}
-      {highlight.overlay && <TextOverlay text={highlight.overlay} />}
+      {highlight.overlay && (
+        <TextOverlay text={highlight.overlay} durationSec={durationSec} />
+      )}
     </AbsoluteFill>
   );
 };
@@ -749,7 +780,8 @@ const BrowserHighlightClip: React.FC<{
   index: number;
   total: number;
   transition: TransitionStyle;
-}> = ({ highlight, index, total, transition }) => {
+  durationSec: number;
+}> = ({ highlight, index, total, transition, durationSec }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -766,33 +798,37 @@ const BrowserHighlightClip: React.FC<{
   });
   const fadeOut = interpolate(
     frame,
-    [fps * (HIGHLIGHT_DUR - TRANSITION_DUR), fps * HIGHLIGHT_DUR],
+    [fps * (durationSec - TRANSITION_DUR), fps * durationSec],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
   const opacity = Math.min(fadeIn, fadeOut);
 
-  // Zoom in/out cycle
-  const zoomIn = interpolate(frame, [fps * 0.8, fps * 2.0], [1, 1.08], {
+  // Focal zoom — applied to video content only, not browser chrome
+  const fx = highlight.focusX ?? 0.5;
+  const fy = highlight.focusY ?? 0.5;
+
+  const focalZoomIn = interpolate(frame, [fps * 1.0, fps * 3.0], [1, 1.15], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
   });
-  const zoomOut = interpolate(
+  const focalZoomOut = interpolate(
     frame,
-    [fps * 2.5, fps * (HIGHLIGHT_DUR - 0.5)],
-    [1.08, 1.01],
+    [fps * 3.5, fps * (durationSec - 0.5)],
+    [1.15, 1.02],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
       easing: Easing.inOut(Easing.cubic),
     }
   );
-  const zoom = frame < fps * 2.5 ? zoomIn : zoomOut;
+  const focalZoom = frame < fps * 3.5 ? focalZoomIn : focalZoomOut;
 
+  // Entry pan
   const panY = interpolate(
     frame,
-    [fps * 0.8, fps * 2.0, fps * 3.5],
+    [fps * 1.0, fps * 3.0, fps * (durationSec - 1.0)],
     [0, -10, 5],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
@@ -860,7 +896,7 @@ const BrowserHighlightClip: React.FC<{
       >
         <div
           style={{
-            transform: `scale(${entry.scale * zoom}) translate(${entry.x}px, ${entry.y + panY}px)`,
+            transform: `scale(${entry.scale}) translate(${entry.x}px, ${entry.y + panY}px)`,
             transformOrigin: "center center",
             width: 880,
             borderRadius: 14,
@@ -882,7 +918,6 @@ const BrowserHighlightClip: React.FC<{
             <div style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#ff5555" }} />
             <div style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#f1fa8c" }} />
             <div style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#50fa7b" }} />
-            {/* Address bar */}
             <div
               style={{
                 flex: 1,
@@ -899,30 +934,171 @@ const BrowserHighlightClip: React.FC<{
             </div>
           </div>
 
-          {/* Video content */}
+          {/* Video content — focal zoom applied here, chrome stays static */}
           <div
             style={{
               width: "100%",
               aspectRatio: "16/10",
               backgroundColor: "#fff",
               overflow: "hidden",
+              position: "relative",
             }}
           >
-            <OffthreadVideo
-              src={staticFile(videoSrc)}
-              startFrom={startFrom}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                transform: `scale(${focalZoom})`,
+                transformOrigin: `${fx * 100}% ${fy * 100}%`,
+                position: "relative",
+              }}
+            >
+              <OffthreadVideo
+                src={staticFile(videoSrc)}
+                startFrom={startFrom}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+              {/* Click cursor — inside zoom container so it tracks with content */}
+              {highlight.clicks && highlight.clicks.length > 0 && (
+                <BrowserCursor
+                  clicks={highlight.clicks}
+                  durationSec={durationSec}
+                />
+              )}
+            </div>
           </div>
         </div>
       </AbsoluteFill>
 
-      {/* Mouse pointer */}
-      <MousePointer />
-
       {/* Text overlay */}
-      {highlight.overlay && <TextOverlay text={highlight.overlay} />}
+      {highlight.overlay && (
+        <TextOverlay text={highlight.overlay} durationSec={durationSec} />
+      )}
     </AbsoluteFill>
+  );
+};
+
+// ─── Browser Cursor (click-tracking) ─────────────────────
+
+const BrowserCursor: React.FC<{
+  clicks: ClickEvent[];
+  durationSec: number;
+}> = ({ clicks, durationSec }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  if (!clicks || clicks.length === 0) return null;
+
+  const currentSec = frame / fps;
+  const scaleX = VIDEO_AREA_W / VIEWPORT_W;
+  const scaleY = VIDEO_AREA_H / VIEWPORT_H;
+
+  // Determine cursor position by interpolating between clicks
+  let targetX: number;
+  let targetY: number;
+
+  if (currentSec <= clicks[0].timeSec) {
+    // Before first click — hold at first position
+    targetX = clicks[0].x * scaleX;
+    targetY = clicks[0].y * scaleY;
+  } else if (currentSec >= clicks[clicks.length - 1].timeSec) {
+    // After last click — hold at last position
+    targetX = clicks[clicks.length - 1].x * scaleX;
+    targetY = clicks[clicks.length - 1].y * scaleY;
+  } else {
+    // Between clicks — interpolate with easing
+    let prevIdx = 0;
+    for (let i = 1; i < clicks.length; i++) {
+      if (clicks[i].timeSec > currentSec) break;
+      prevIdx = i;
+    }
+    const nextIdx = Math.min(prevIdx + 1, clicks.length - 1);
+    const prev = clicks[prevIdx];
+    const next = clicks[nextIdx];
+    const t = (currentSec - prev.timeSec) / (next.timeSec - prev.timeSec || 1);
+    const eased = Easing.inOut(Easing.cubic)(Math.min(1, t));
+    targetX = interpolate(eased, [0, 1], [prev.x * scaleX, next.x * scaleX]);
+    targetY = interpolate(eased, [0, 1], [prev.y * scaleY, next.y * scaleY]);
+  }
+
+  // Click detection — within 3 frames of a click event
+  const clickWindow = 3 / fps;
+  const isClicking = clicks.some(
+    (c) => Math.abs(currentSec - c.timeSec) < clickWindow
+  );
+
+  // Fade in over first 0.3s, fade out after last click
+  const lastClickTime = clicks[clicks.length - 1].timeSec;
+  const fadeIn = interpolate(currentSec, [0, 0.3], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const fadeOut = interpolate(
+    currentSec,
+    [lastClickTime + 0.3, lastClickTime + 0.8],
+    [1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+  );
+  const opacity = Math.min(fadeIn, fadeOut);
+
+  if (opacity <= 0) return null;
+
+  return (
+    <>
+      {/* Click ripples */}
+      {clicks.map((click, i) => {
+        const rippleDuration = 0.4;
+        if (currentSec < click.timeSec || currentSec > click.timeSec + rippleDuration)
+          return null;
+
+        const progress = (currentSec - click.timeSec) / rippleDuration;
+        const rippleScale = interpolate(progress, [0, 1], [0.5, 2.5]);
+        const rippleOpacity = interpolate(progress, [0, 0.3, 1], [0.6, 0.4, 0]);
+
+        return (
+          <div
+            key={i}
+            style={{
+              position: "absolute",
+              left: click.x * scaleX - 15,
+              top: click.y * scaleY - 15,
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              border: `2px solid ${ACCENT}`,
+              transform: `scale(${rippleScale})`,
+              opacity: rippleOpacity,
+              pointerEvents: "none",
+              zIndex: 49,
+            }}
+          />
+        );
+      })}
+
+      {/* Cursor */}
+      <div
+        style={{
+          position: "absolute",
+          left: targetX,
+          top: targetY,
+          zIndex: 50,
+          opacity,
+          transform: `scale(${isClicking ? 0.85 : 1})`,
+          transformOrigin: "top left",
+          pointerEvents: "none",
+        }}
+      >
+        <svg width="24" height="28" viewBox="0 0 24 28" fill="none">
+          <path
+            d="M2 2L2 22L7.5 16.5L12.5 26L16 24.5L11 15H19L2 2Z"
+            fill="white"
+            stroke="black"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+    </>
   );
 };
 

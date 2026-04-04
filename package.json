@@ -1,7 +1,7 @@
 {
   "name": "agentreel",
-  "version": "0.1.7",
-  "description": "Turn Claude Code sessions into viral demo videos",
+  "version": "0.2.0",
+  "description": "Turn your web apps and CLIs into viral clips",
   "bin": {
     "agentreel": "./bin/agentreel.mjs"
   },
@@ -38,8 +38,8 @@
     "cli",
     "demo",
     "video",
-    "claude",
-    "agent",
-    "remotion"
+    "remotion",
+    "screencast",
+    "web-app"
   ]
 }

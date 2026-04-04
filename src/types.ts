@@ -1,3 +1,9 @@
+export interface ClickEvent {
+  x: number; // viewport X (0-1280)
+  y: number; // viewport Y (0-800)
+  timeSec: number; // seconds relative to highlight start
+}
+
 // A highlight is one "moment" in the demo.
 // Either terminal lines (CLI demo) or a video clip (browser demo).
 export interface Highlight {
@@ -12,6 +18,9 @@ export interface Highlight {
   videoSrc?: string; // path to video file (served via staticFile)
   videoStartSec?: number; // trim: start time in seconds
   videoEndSec?: number; // trim: end time in seconds
+  focusX?: number; // 0-1, focal point X for zoom (default 0.5)
+  focusY?: number; // 0-1, focal point Y for zoom (default 0.5)
+  clicks?: ClickEvent[]; // click positions for cursor animation
 }
 
 export interface TermLine {

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, copyFileSync, createReadStream } from "node:fs";
-import { join, dirname, basename, resolve } from "node:path";
-import { homedir, tmpdir } from "node:os";
+import { readFileSync, statSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 
@@ -18,26 +18,28 @@ function parseArgs() {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--help" || arg === "-h") { printUsage(); process.exit(0); }
-    if (arg === "--version" || arg === "-v") { console.log("0.1.0"); process.exit(0); }
+    if (arg === "--version" || arg === "-v") {
+      const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf-8"));
+      console.log(pkg.version);
+      process.exit(0);
+    }
     if (arg === "--cmd" || arg === "-c") flags.cmd = args[++i];
     else if (arg === "--url" || arg === "-u") flags.url = args[++i];
     else if (arg === "--prompt" || arg === "-p") flags.prompt = args[++i];
     else if (arg === "--title" || arg === "-t") flags.title = args[++i];
     else if (arg === "--output" || arg === "-o") flags.output = args[++i];
     else if (arg === "--music") flags.music = args[++i];
-    else if (arg === "--session") flags.session = args[++i];
     else if (arg === "--no-share") flags.noShare = true;
   }
   return flags;
 }
 
 function printUsage() {
-  console.log(`agentreel — Turn Claude Code sessions into viral demo videos
+  console.log(`agentreel — Turn your web apps and CLIs into viral clips
 
 Usage:
-  agentreel                                          # auto-detect from session
-  agentreel --cmd "npx @islo-labs/overtime"           # manual CLI demo
-  agentreel --url http://localhost:3000               # manual browser demo
+  agentreel --cmd "npx my-cli-tool"              # CLI demo
+  agentreel --url http://localhost:3000           # browser demo
 
 Flags:
   -c, --cmd <command>     CLI command to demo
@@ -46,153 +48,9 @@ Flags:
   -t, --title <text>      video title
   -o, --output <file>     output file (default: agentreel.mp4)
       --music <file>      path to background music mp3
-      --session <file>    path to Claude Code session .jsonl
       --no-share          skip the share prompt
   -h, --help              show help
   -v, --version           show version`);
-}
-
-// ── Session parser ──────────────────────────────────────────
-
-function findLatestSession() {
-  const cwd = process.cwd();
-  const projectKey = cwd.replaceAll("/", "-");
-  const projectDir = join(homedir(), ".claude", "projects", projectKey);
-
-  if (!existsSync(projectDir)) return null;
-
-  let newest = null;
-  let newestTime = 0;
-  for (const entry of readdirSync(projectDir)) {
-    if (!entry.endsWith(".jsonl")) continue;
-    const full = join(projectDir, entry);
-    const mtime = statSync(full).mtimeMs;
-    if (mtime > newestTime) { newestTime = mtime; newest = full; }
-  }
-  return newest;
-}
-
-function parseSession(path) {
-  const lines = readFileSync(path, "utf-8").split("\n").filter(Boolean);
-  const session = { prompt: "", title: "", actions: [], startTime: null, endTime: null };
-
-  for (const line of lines) {
-    let obj;
-    try { obj = JSON.parse(line); } catch { continue; }
-
-    const ts = obj.timestamp ? new Date(obj.timestamp) : null;
-    if (ts && !isNaN(ts)) {
-      if (!session.startTime || ts < session.startTime) session.startTime = ts;
-      if (!session.endTime || ts > session.endTime) session.endTime = ts;
-    }
-
-    if (obj.type === "user" && !session.prompt) {
-      session.prompt = extractPrompt(obj);
-    }
-    if (obj.type === "custom-title" && obj.customTitle) {
-      session.title = obj.customTitle;
-    }
-    if (obj.type === "assistant") {
-      const content = obj.message?.content;
-      if (!Array.isArray(content)) continue;
-      for (const block of content) {
-        if (block.type !== "tool_use") continue;
-        const action = parseToolUse(block.name, block.input, ts);
-        if (action) session.actions.push(action);
-      }
-    }
-  }
-
-  session.actions.sort((a, b) => (a.time || 0) - (b.time || 0));
-  if (session.startTime && session.endTime) {
-    session.durationMs = session.endTime - session.startTime;
-  }
-  return session;
-}
-
-function extractPrompt(obj) {
-  const content = obj.message?.content;
-  if (typeof content === "string") return cleanPrompt(content);
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      if (block.type === "text" && block.text) return cleanPrompt(block.text);
-    }
-  }
-  return "";
-}
-
-function cleanPrompt(s) {
-  for (const line of s.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || /^[│├└─┌┐]/.test(trimmed)) continue;
-    return trimmed.slice(0, 200);
-  }
-  return s.slice(0, 200);
-}
-
-function parseToolUse(name, input, ts) {
-  if (!input) return null;
-  switch (name) {
-    case "Read": return { type: "read", filePath: input.file_path, time: ts };
-    case "Write": return { type: "write", filePath: input.file_path, size: input.content?.length || 0, time: ts };
-    case "Edit": return { type: "edit", filePath: input.file_path, time: ts };
-    case "Bash": return { type: "bash", command: input.command, time: ts };
-    case "Grep": case "Glob": return { type: "search", time: ts };
-    case "Agent": return { type: "agent", time: ts };
-    default: return null;
-  }
-}
-
-// ── Detection ───────────────────────────────────────────────
-
-function detectResult(session) {
-  const containsAny = (s, ...subs) => subs.some(sub => s.includes(sub));
-
-  for (const a of session.actions) {
-    if (a.type === "bash") {
-      const cmd = (a.command || "").toLowerCase();
-      if (containsAny(cmd, "npm run dev", "npm start", "npx next", "npx vite", "yarn dev", "pnpm dev", "flask run", "uvicorn")) {
-        const url = extractURL(a.command) || "http://localhost:3000";
-        return { type: "browser", command: url };
-      }
-    }
-  }
-
-  for (const a of session.actions) {
-    if ((a.type === "write" || a.type === "edit") && a.filePath?.endsWith("package.json")) {
-      try {
-        const pkg = JSON.parse(readFileSync(a.filePath, "utf-8"));
-        if (pkg.bin && pkg.name) return { type: "cli", command: `npx ${pkg.name} --help` };
-      } catch { /* skip */ }
-    }
-  }
-
-  for (const a of session.actions) {
-    if (a.type === "bash" && a.command?.includes("go build")) {
-      const parts = a.command.split(/\s+/);
-      const oIdx = parts.indexOf("-o");
-      if (oIdx !== -1 && parts[oIdx + 1]) return { type: "cli", command: `${parts[oIdx + 1]} --help` };
-    }
-  }
-
-  for (let i = session.actions.length - 1; i >= 0; i--) {
-    const a = session.actions[i];
-    if (a.type !== "bash") continue;
-    const cmd = (a.command || "").trim();
-    if (containsAny(cmd, "go build", "go test", "npm install", "npm test", "git ", "mkdir", "ls ", "cat ")) continue;
-    if (containsAny(cmd, "npx ", "./bin/", "./dist/", "go run", "python ", "node ")) {
-      return { type: "cli", command: cmd };
-    }
-  }
-
-  return { type: "unknown" };
-}
-
-function extractURL(cmd) {
-  for (const part of (cmd || "").split(/\s+/)) {
-    if (part.includes("localhost:")) return part.startsWith("http") ? part : `http://${part}`;
-  }
-  return null;
 }
 
 // ── Recording + Highlights ──────────────────────────────────
@@ -371,30 +229,10 @@ async function main() {
   let demoURL = flags.url;
   let prompt = flags.prompt;
 
-  // Auto-detect from Claude session if no manual flags
   if (!demoCmd && !demoURL) {
-    const sessionPath = flags.session || findLatestSession();
-    if (!sessionPath) {
-      console.error("No session found and no --cmd or --url provided.\n");
-      printUsage();
-      process.exit(1);
-    }
-
-    console.error(`Reading session: ${basename(sessionPath)}`);
-    const session = parseSession(sessionPath);
-    if (!prompt) prompt = session.prompt;
-
-    const detected = detectResult(session);
-    if (detected.type === "cli") {
-      demoCmd = detected.command;
-      console.error(`Detected CLI: ${demoCmd}`);
-    } else if (detected.type === "browser") {
-      demoURL = detected.command;
-      console.error(`Detected browser: ${demoURL}`);
-    } else {
-      console.error("Couldn't detect what was built. Use --cmd or --url.");
-      process.exit(1);
-    }
+    console.error("Please provide --cmd or --url.\n");
+    printUsage();
+    process.exit(1);
   }
 
   let videoTitle = flags.title || demoCmd || demoURL;
@@ -437,6 +275,32 @@ async function main() {
     const highlightsPath = extractBrowserHighlights(videoPath, task);
     const highlights = JSON.parse(readFileSync(highlightsPath, "utf-8"));
     console.error(`  ${highlights.length} highlights extracted`);
+
+    // Merge click data into highlights
+    const clicksPath = videoPath.replace(".mp4", "-clicks.json");
+    let allClicks = [];
+    if (existsSync(clicksPath)) {
+      allClicks = JSON.parse(readFileSync(clicksPath, "utf-8"));
+      console.error(`  ${allClicks.length} clicks captured`);
+    }
+
+    for (const h of highlights) {
+      const startSec = h.videoStartSec || 0;
+      const endSec = h.videoEndSec || (startSec + 7);
+
+      h.clicks = allClicks
+        .filter(c => c.timeSec >= startSec && c.timeSec <= endSec)
+        .map(c => ({
+          x: Math.max(0, Math.min(1280, c.x)),
+          y: Math.max(0, Math.min(800, c.y)),
+          timeSec: c.timeSec - startSec,
+        }));
+
+      if (h.clicks.length > 0) {
+        h.focusX = h.clicks.reduce((s, c) => s + c.x, 0) / h.clicks.length / 1280;
+        h.focusY = h.clicks.reduce((s, c) => s + c.y, 0) / h.clicks.length / 800;
+      }
+    }
 
     console.error("Step 3/3: Rendering video...");
     await renderVideo({

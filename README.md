@@ -1,6 +1,6 @@
 # agentreel
 
-Turn your Claude Code sessions into viral demo videos.
+Turn your web apps and CLIs into viral clips.
 
 https://github.com/user-attachments/assets/474fd85d-3b35-48f4-82b8-1b337840fb51
 
@@ -15,25 +15,23 @@ npx agentreel
 ## Usage
 
 ```bash
-# After Claude builds something, just run:
-agentreel
+# CLI demo:
+agentreel --cmd "npx my-cli-tool"
 
-# It reads your session, detects what was built, records a demo,
-# picks the highlights, and renders a video. One command.
+# Browser demo:
+agentreel --url http://localhost:3000
 
-# Manual mode:
-agentreel --cmd "npx my-cli-tool"          # CLI demo
-agentreel --url http://localhost:3000       # browser demo
+# With context for smarter demo planning:
+agentreel --cmd "npx my-tool" --prompt "A CLI that manages cron jobs"
 ```
 
 ## How it works
 
-1. Reads your Claude Code session log
-2. Detects what was built — CLI tool or web app
-3. Claude plans and executes a demo (terminal or browser)
-4. Claude picks the 3-4 best highlight moments
-5. Renders a polished video with music, transitions, and overlays
-6. Prompts you to share on Twitter
+1. You provide a CLI command or URL
+2. AI plans and executes a demo (terminal or browser)
+3. AI picks the 3-4 best highlight moments
+4. Renders a polished video with music, transitions, and overlays
+5. Prompts you to share on Twitter
 
 ## What you get
 
@@ -56,7 +54,7 @@ Ready for Twitter/X, LinkedIn, Reels.
 
 - Node.js 18+
 - Python 3.10+
-- Claude CLI (`claude`)
+- Claude CLI (`claude`) — used to plan demo sequences
 
 ## Credits
 

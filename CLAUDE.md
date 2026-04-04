@@ -1,6 +1,6 @@
 # agentreel
 
-CLI that turns Claude Code sessions into viral demo videos.
+Turn your web apps and CLIs into viral clips.
 
 ## Run
 
@@ -12,7 +12,7 @@ npx remotion studio  # preview video template
 
 ## Architecture
 
-- `bin/agentreel.mjs` — CLI orchestrator (session → detect → capture → render)
+- `bin/agentreel.mjs` — CLI orchestrator (capture → render)
 - `scripts/cli_demo.py` — Claude plans + records CLI demo + extracts highlights
 - `scripts/browser_demo.py` — browser demo via Playwright
 - `src/CastVideo.tsx` — Remotion video composition

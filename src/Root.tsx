@@ -15,8 +15,11 @@ export const RemotionRoot: React.FC = () => {
       calculateMetadata={({ props }: { props: CastProps }) => {
         const fps = 30;
         const titleFrames = Math.round(2.5 * fps);
-        const highlightFrames = Math.round(4 * fps) * props.highlights.length;
-        const endFrames = Math.round(2.5 * fps);
+        const highlightFrames = props.highlights.reduce((sum, h) => {
+          const dur = h.videoSrc ? 7.0 : 4.5;
+          return sum + Math.round(dur * fps);
+        }, 0);
+        const endFrames = Math.round(3.5 * fps);
         return {
           durationInFrames: titleFrames + highlightFrames + endFrames,
         };

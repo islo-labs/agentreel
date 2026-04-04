@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 
 def find_claude():
@@ -74,7 +75,7 @@ def extract_highlights(video_path, task):
         f"Suggest 3-4 highlight moments as a JSON array. Each highlight has: "
         f'"label" (1-2 words), "overlay" (short caption with **bold** for accent), '
         f'"videoStartSec" (start time in seconds), "videoEndSec" (end time). '
-        f"Each clip should be 3-5 seconds. Cover: page load, key interaction, result. "
+        f"Each clip should be 5-8 seconds to show the full interaction. Cover: page load, key interaction, result. "
         f"Return ONLY the JSON array."
     )
 
@@ -114,6 +115,7 @@ async def record_browser_demo(url, task, output_path):
     print(f"Script ready ({len(script_code)} chars)", file=sys.stderr)
 
     video_dir = tempfile.mkdtemp()
+    recording_start_ms = int(time.time() * 1000)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -122,6 +124,22 @@ async def record_browser_demo(url, task, output_path):
             record_video_dir=video_dir,
             record_video_size={"width": 1280, "height": 800},
         )
+
+        # Inject click tracker — persists across navigations
+        click_tracker_js = (
+            "if (!window.__agentreel_clicks) {"
+            "  window.__agentreel_clicks = [];"
+            "  document.addEventListener('click', function(e) {"
+            "    window.__agentreel_clicks.push({"
+            "      x: e.clientX,"
+            "      y: e.clientY,"
+            f"     timestamp: Date.now() - {recording_start_ms}"
+            "    });"
+            "  }, true);"
+            "}"
+        )
+        await context.add_init_script(click_tracker_js)
+
         page = await context.new_page()
 
         # Navigate first
@@ -134,11 +152,11 @@ async def record_browser_demo(url, task, output_path):
 
         await page.wait_for_timeout(1000)
 
-        # Execute the generated demo
+        # Run the generated demo
         try:
             local_ns = {}
-            full_code = f"import asyncio\n{script_code}"
-            compiled = compile(full_code, "<demo>", "exec")
+            full_code = "import asyncio\n" + script_code
+            compiled = compile(full_code, "<demo>", "exec")  # noqa: S102
             exec(compiled, local_ns)  # noqa: S102
 
             if "demo" in local_ns:
@@ -155,6 +173,21 @@ async def record_browser_demo(url, task, output_path):
             await page.wait_for_timeout(2000)
             await page.evaluate("window.scrollTo({ top: 0, behavior: 'smooth' })")
             await page.wait_for_timeout(2000)
+
+        # Extract click data before closing
+        try:
+            clicks_raw = await page.evaluate("window.__agentreel_clicks || []")
+        except Exception:
+            clicks_raw = []
+
+        clicks = [
+            {"x": c["x"], "y": c["y"], "timeSec": round(c["timestamp"] / 1000.0, 3)}
+            for c in clicks_raw
+        ]
+        clicks_path = output_path.replace(".mp4", "-clicks.json")
+        with open(clicks_path, "w") as f:
+            json.dump(clicks, f, indent=2)
+        print(f"Captured {len(clicks)} clicks -> {clicks_path}", file=sys.stderr)
 
         # Get the video path before closing
         video = page.video

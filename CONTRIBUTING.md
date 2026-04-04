@@ -26,8 +26,8 @@ npx remotion studio
 
 | File | What it does |
 |------|-------------|
-| `bin/agentreel.mjs` | CLI: session parse → detect → capture → render |
-| `scripts/cli_demo.py` | Claude plans demo, records in PTY, extracts highlights |
+| `bin/agentreel.mjs` | CLI orchestrator: capture → render |
+| `scripts/cli_demo.py` | AI plans demo, records in PTY, extracts highlights |
 | `scripts/browser_demo.py` | Browser demo via Playwright |
 | `src/CastVideo.tsx` | Remotion video composition |
 | `src/types.ts` | TypeScript types for highlights |
