@@ -158,11 +158,18 @@ function extractBrowserHighlights(videoPath, task) {
 
 function buildBrowserHighlights(clicks, videoPath, task) {
   const CLIP_DUR = 7;
+  const MIN_HIGHLIGHTS = 3;
+  const MAX_HIGHLIGHTS = 4;
   const labels = ["Overview", "Interact", "Navigate", "Result"];
   const overlays = ["**First look**", "**Key action**", "**Exploring**", "**The result**"];
 
-  // If we have clicks, cluster them into highlights
-  if (clicks.length >= 2) {
+  // Estimate video duration from last click or default to 25s
+  const lastClickTime = clicks.length > 0 ? clicks[clicks.length - 1].timeSec : 0;
+  const videoDur = Math.max(25, lastClickTime + 5);
+
+  // Build click-based highlights
+  const clickHighlights = [];
+  if (clicks.length >= 1) {
     // Group clicks that are within 3s of each other
     const clusters = [];
     let cluster = [clicks[0]];
@@ -177,14 +184,14 @@ function buildBrowserHighlights(clicks, videoPath, task) {
     }
     clusters.push(cluster);
 
-    // Take up to 4 clusters, pick the ones with most clicks
+    // Take top clusters by density, sorted by time
     const ranked = clusters
-      .map((c, i) => ({ cluster: c, idx: i }))
+      .map((c) => ({ cluster: c }))
       .sort((a, b) => b.cluster.length - a.cluster.length)
-      .slice(0, 4)
+      .slice(0, MAX_HIGHLIGHTS)
       .sort((a, b) => a.cluster[0].timeSec - b.cluster[0].timeSec);
 
-    const highlights = ranked.map((r, i) => {
+    for (const r of ranked) {
       const first = r.cluster[0];
       const last = r.cluster[r.cluster.length - 1];
       const center = (first.timeSec + last.timeSec) / 2;
@@ -200,41 +207,50 @@ function buildBrowserHighlights(clicks, videoPath, task) {
       const focusX = hlClicks.reduce((s, c) => s + c.x, 0) / hlClicks.length / 1280;
       const focusY = hlClicks.reduce((s, c) => s + c.y, 0) / hlClicks.length / 800;
 
-      return {
-        label: labels[i % labels.length],
-        overlay: overlays[i % overlays.length],
+      clickHighlights.push({
         videoSrc: "browser-demo.mp4",
         videoStartSec: Math.round(startSec * 10) / 10,
         videoEndSec: Math.round(endSec * 10) / 10,
         focusX,
         focusY,
         clicks: hlClicks,
-      };
-    });
-
-    console.error(`  ${highlights.length} highlights from ${clicks.length} clicks`);
-    return highlights;
-  }
-
-  // Fallback: try Claude extraction, or use evenly-spaced defaults
-  try {
-    const highlightsPath = extractBrowserHighlights(videoPath, task);
-    const highlights = JSON.parse(readFileSync(highlightsPath, "utf-8"));
-    if (highlights.length > 0) {
-      console.error(`  ${highlights.length} highlights from Claude`);
-      return highlights;
+      });
     }
-  } catch {
-    // Claude failed, use defaults
   }
 
-  // Last resort: evenly-spaced clips
-  console.error("  Using default highlights (no clicks, no Claude)");
-  return [
-    { label: "Overview", overlay: "**Quick look**", videoSrc: "browser-demo.mp4", videoStartSec: 1, videoEndSec: 8 },
-    { label: "Features", overlay: "**Key features**", videoSrc: "browser-demo.mp4", videoStartSec: 8, videoEndSec: 15 },
-    { label: "Result", overlay: "**See it work**", videoSrc: "browser-demo.mp4", videoStartSec: 15, videoEndSec: 22 },
-  ];
+  // Pad to MIN_HIGHLIGHTS with evenly-spaced filler clips
+  const highlights = [...clickHighlights];
+  if (highlights.length < MIN_HIGHLIGHTS) {
+    // Find time gaps not covered by existing highlights
+    const covered = highlights.map(h => [h.videoStartSec, h.videoEndSec]);
+    const fillerCount = MIN_HIGHLIGHTS - highlights.length;
+
+    // Divide full video into slots, pick uncovered ones
+    const slotDur = videoDur / (fillerCount + covered.length + 1);
+    for (let i = 0; i < fillerCount; i++) {
+      const candidate = slotDur * (i + 1);
+      // Skip if overlaps with existing highlight
+      const overlaps = covered.some(([s, e]) => candidate >= s && candidate <= e);
+      const startSec = overlaps
+        ? Math.max(0, videoDur - CLIP_DUR * (fillerCount - i))
+        : Math.max(0, candidate - CLIP_DUR / 2);
+      highlights.push({
+        videoSrc: "browser-demo.mp4",
+        videoStartSec: Math.round(startSec * 10) / 10,
+        videoEndSec: Math.round((startSec + CLIP_DUR) * 10) / 10,
+      });
+    }
+  }
+
+  // Sort by start time and assign labels
+  highlights.sort((a, b) => a.videoStartSec - b.videoStartSec);
+  for (let i = 0; i < highlights.length; i++) {
+    highlights[i].label = labels[i % labels.length];
+    highlights[i].overlay = overlays[i % overlays.length];
+  }
+
+  console.error(`  ${highlights.length} highlights (${clickHighlights.length} from clicks, ${highlights.length - clickHighlights.length} filler)`);
+  return highlights;
 }
 
 // ── Render ──────────────────────────────────────────────────
@@ -323,10 +339,11 @@ async function shareFlow(outputPath, title, prompt) {
   const shouldShare = await askYesNo("Share to Twitter? [Y/n] ");
   if (!shouldShare) return;
 
-  // Use prompt for tweet text if available, otherwise title
-  const tweetBody = prompt || title;
-
-  const text = `${tweetBody}\n\nMade with agentreel`;
+  const name = title || "this";
+  const desc = prompt || "";
+  const text = desc
+    ? `Introducing ${name} — ${desc}\n\nMade with https://github.com/islo-labs/agentreel`
+    : `Introducing ${name}\n\nMade with https://github.com/islo-labs/agentreel`;
   const tweetText = encodeURIComponent(text);
   const intentURL = `https://twitter.com/intent/tweet?text=${tweetText}`;
 
@@ -341,6 +358,22 @@ async function shareFlow(outputPath, title, prompt) {
   }
 }
 
+// ── Auto-describe ──────────────────────────────────────────
+
+function autoDescribe(cmd, url) {
+  const target = cmd || url;
+  try {
+    const result = execFileSync("claude", [
+      "-p",
+      `Describe what this tool/app does in one short sentence (under 10 words). No quotes, no period. Just the description.\n\n${target}`,
+      "--output-format", "text",
+    ], { encoding: "utf-8", timeout: 30000, stdio: ["ignore", "pipe", "ignore"] });
+    const desc = result.trim();
+    if (desc && desc.length < 100) return desc;
+  } catch { /* fall through */ }
+  return cmd ? cmd.split(/\s+/).pop() : "Web app demo";
+}
+
 // ── Main ────────────────────────────────────────────────────
 
 async function main() {
@@ -351,6 +384,13 @@ async function main() {
   let demoCmd = flags.cmd;
   let demoURL = flags.url;
   let prompt = flags.prompt;
+
+  // Auto-generate description if not provided
+  if (!prompt) {
+    console.error("Generating description...");
+    prompt = autoDescribe(demoCmd, demoURL);
+    console.error(`  "${prompt}"`);
+  }
 
   if (!demoCmd && !demoURL) {
     console.error("Please provide --cmd or --url.\n");
