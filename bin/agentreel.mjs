@@ -64,9 +64,9 @@ function findPython() {
 function ensureBrowserDeps() {
   const venvDir = join(ROOT, "scripts", ".venv");
   const venvPython = join(venvDir, "bin", "python");
+  const browsersDir = join(venvDir, "playwright-browsers");
 
   if (existsSync(venvPython)) {
-    // Check if playwright is installed
     try {
       execFileSync(venvPython, ["-c", "import playwright"], {
         stdio: "ignore",
@@ -76,7 +76,6 @@ function ensureBrowserDeps() {
       // playwright missing, install below
     }
   } else {
-    // Create venv
     console.error("  Setting up Python environment...");
     execFileSync("python3", ["-m", "venv", venvDir], {
       stdio: ["ignore", "inherit", "inherit"],
@@ -90,10 +89,10 @@ function ensureBrowserDeps() {
   });
 
   console.error("  Installing Chromium (one-time, ~150MB)...");
-  const browsersDir = join(venvDir, "playwright-browsers");
   execFileSync(venvPython, ["-m", "playwright", "install", "chromium"], {
     stdio: ["ignore", "inherit", "inherit"],
     env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsersDir },
+    cwd: tmpdir(),
   });
 }
 
