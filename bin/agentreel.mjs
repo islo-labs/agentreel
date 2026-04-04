@@ -100,13 +100,14 @@ function ensureBrowserDeps() {
   });
 }
 
-function recordCLI(command, workDir, context) {
+function recordCLI(command, workDir, context, guidelines) {
   const python = findPython();
   const script = join(ROOT, "scripts", "cli_demo.py");
   const outFile = join(tmpdir(), "agentreel-cli-demo.cast");
 
   const args = [script, command, workDir, outFile];
   if (context) args.push(context);
+  if (guidelines) args.push(guidelines);
 
   console.error(`Agent planning CLI demo for: ${command}`);
   execFileSync(python, args, { stdio: ["ignore", "inherit", "inherit"], env: process.env });
@@ -133,7 +134,7 @@ function browserEnv() {
   return { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsersDir };
 }
 
-function recordBrowser(url, task, authState) {
+function recordBrowser(url, task, authState, guidelines) {
   const python = findPython();
   const script = join(ROOT, "scripts", "browser_demo.py");
   const outFile = join(tmpdir(), "agentreel-browser-demo.mp4");
@@ -141,6 +142,7 @@ function recordBrowser(url, task, authState) {
   console.error(`Agent demoing browser app: ${url}`);
   const args = [script, url, outFile, task];
   if (authState) args.push("--auth", authState);
+  if (guidelines) args.push("--guidelines", guidelines);
   execFileSync(python, args, {
     stdio: ["ignore", "inherit", "inherit"],
     env: browserEnv(),
@@ -425,7 +427,7 @@ async function main() {
 
   if (demoCmd) {
     console.error("Step 1/3: Recording CLI demo...");
-    const castPath = recordCLI(demoCmd, process.cwd(), prompt);
+    const castPath = recordCLI(demoCmd, process.cwd(), prompt, flags.guidelines);
 
     console.error("Step 2/3: Extracting highlights...");
     const highlightsPath = extractHighlightsFromCast(castPath, prompt, flags.guidelines);
@@ -451,7 +453,7 @@ async function main() {
 
     ensureBrowserDeps();
     console.error("Step 1/3: Recording browser demo...");
-    const videoPath = recordBrowser(demoURL, task, flags.auth);
+    const videoPath = recordBrowser(demoURL, task, flags.auth, flags.guidelines);
 
     // Copy video to Remotion public dir so it can be served
     const publicDir = join(ROOT, "public");

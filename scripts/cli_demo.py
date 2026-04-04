@@ -33,12 +33,14 @@ def find_claude():
     return "claude"
 
 
-def generate_demo_plan(command: str, context: str) -> list[dict]:
+def generate_demo_plan(command: str, context: str, guidelines: str = "") -> list[dict]:
     """Use claude CLI to plan a demo sequence."""
+    guidelines_block = f"\n\nIMPORTANT guidelines you MUST follow:\n{guidelines}" if guidelines else ""
+
     prompt = f"""You are planning a terminal demo for a CLI tool. The tool is invoked with: {command}
 
 Context about what this tool does:
-{context}
+{context}{guidelines_block}
 
 Generate a JSON array of demo steps. Each step is an object with:
 - "type": "command" (run a shell command)
@@ -289,9 +291,10 @@ if __name__ == "__main__":
     workdir = sys.argv[2]
     output = sys.argv[3]
     context = sys.argv[4] if len(sys.argv) > 4 else ""
+    guidelines = sys.argv[5] if len(sys.argv) > 5 else ""
 
     print(f"Planning demo for: {command}", file=sys.stderr)
-    steps = generate_demo_plan(command, context)
+    steps = generate_demo_plan(command, context, guidelines)
     print(f"Generated {len(steps)} steps:", file=sys.stderr)
     for s in steps:
         print(f"  $ {s['value']}  — {s.get('description', '')}", file=sys.stderr)
@@ -302,7 +305,7 @@ if __name__ == "__main__":
     # Extract highlights from the recording
     highlights_path = output.replace(".cast", "-highlights.json")
     print("Extracting highlights...", file=sys.stderr)
-    highlights = extract_highlights(output, context)
+    highlights = extract_highlights(output, context, guidelines)
     with open(highlights_path, "w") as f:
         json.dump(highlights, f, indent=2)
     print(f"Saved {len(highlights)} highlights to: {highlights_path}", file=sys.stderr)

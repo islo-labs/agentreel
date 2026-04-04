@@ -30,11 +30,13 @@ def find_claude():
     return "claude"
 
 
-def generate_playwright_script(url, task):
+def generate_playwright_script(url, task, guidelines=""):
     """Use claude CLI to generate a Playwright demo script."""
+    guidelines_part = f"IMPORTANT guidelines: {guidelines}. " if guidelines else ""
     prompt = (
         f"Generate a Playwright Python async function that demos a web app at {url}. "
         f"Task: {task}. "
+        f"{guidelines_part}"
         f"The function signature is: async def demo(page). "
         f"Navigate to the URL, wait for load, interact with key features — "
         f"click buttons, fill forms, scroll. Take about 20 seconds total. "
@@ -124,12 +126,12 @@ def extract_highlights(video_path, task):
     return highlights
 
 
-async def record_browser_demo(url, task, output_path, auth_state=None):
+async def record_browser_demo(url, task, output_path, auth_state=None, guidelines=""):
     """Generate and run a Playwright demo with video recording."""
     from playwright.async_api import async_playwright
 
     print(f"Generating demo script for {url}...", file=sys.stderr)
-    script_code = generate_playwright_script(url, task)
+    script_code = generate_playwright_script(url, task, guidelines)
     print(f"Script ready ({len(script_code)} chars)", file=sys.stderr)
 
     video_dir = tempfile.mkdtemp()
@@ -269,12 +271,16 @@ if __name__ == "__main__":
         # Parse remaining args: [task] [--auth <state_file>]
         task = "Explore the main features"
         auth_state = None
+        guidelines = ""
         i = 3
         while i < len(sys.argv):
             if sys.argv[i] == "--auth" and i + 1 < len(sys.argv):
                 auth_state = sys.argv[i + 1]
                 i += 2
+            elif sys.argv[i] == "--guidelines" and i + 1 < len(sys.argv):
+                guidelines = sys.argv[i + 1]
+                i += 2
             else:
                 task = sys.argv[i]
                 i += 1
-        asyncio.run(record_browser_demo(url, task, output, auth_state=auth_state))
+        asyncio.run(record_browser_demo(url, task, output, auth_state=auth_state, guidelines=guidelines))
