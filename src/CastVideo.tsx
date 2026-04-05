@@ -20,19 +20,18 @@ const TERM_BG = "#282a36";
 const TITLE_BAR = "#1e1f29";
 const CURSOR_COLOR = "#f8f8f2";
 
-const TITLE_DUR = 2.5;
-const TERMINAL_HIGHLIGHT_DUR = 4.5;
-const BROWSER_HIGHLIGHT_DUR = 7.0;
-const TRANSITION_DUR = 0.5;
-const END_DUR = 3.5;
+// Mode-specific timing (synced with Root.tsx calculateMetadata)
+const REEL_TIMING = { title: 2.5, termHighlight: 4.5, browserHighlight: 7.0, transition: 0.5, end: 3.5 };
+const DEMO_TIMING = { title: 2.0, termHighlight: 12.0, browserHighlight: 10.0, transition: 0.4, end: 3.0 };
 
 const VIEWPORT_W = 1280;
 const VIEWPORT_H = 800;
 const VIDEO_AREA_W = 880;
 const VIDEO_AREA_H = 550; // 880 * 10/16
 
-function getHighlightDuration(h: Highlight): number {
-  return h.videoSrc ? BROWSER_HIGHLIGHT_DUR : TERMINAL_HIGHLIGHT_DUR;
+function getHighlightDuration(h: Highlight, mode: "reel" | "demo" = "reel"): number {
+  const t = mode === "demo" ? DEMO_TIMING : REEL_TIMING;
+  return h.videoSrc ? t.browserHighlight : t.termHighlight;
 }
 
 const SANS =
@@ -87,17 +86,21 @@ export const CastVideo: React.FC<CastProps> = ({
   endText,
   endUrl,
   gradient,
+  mode: rawMode,
 }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
+  const mode = rawMode || "reel";
+  const isDemo = mode === "demo";
+  const timing = isDemo ? DEMO_TIMING : REEL_TIMING;
   const g = gradient || ["#0f0f1a", "#1a0f2e"];
 
-  const titleFrames = Math.round(TITLE_DUR * fps);
-  const endFrames = Math.round(END_DUR * fps);
+  const titleFrames = Math.round(timing.title * fps);
+  const endFrames = Math.round(timing.end * fps);
 
   // Compute per-highlight durations and cumulative offsets
   const hlDurations = highlights.map((h) =>
-    Math.round(getHighlightDuration(h) * fps)
+    Math.round(getHighlightDuration(h, mode) * fps)
   );
   const hlOffsets: number[] = [];
   let cumulative = 0;
@@ -107,9 +110,11 @@ export const CastVideo: React.FC<CastProps> = ({
   }
 
   // Animated gradient — hue rotates slowly over time
-  const gradAngle = interpolate(frame, [0, durationInFrames], [125, 200], {
-    extrapolateRight: "clamp",
-  });
+  const gradAngle = isDemo
+    ? 145 // static angle for demo
+    : interpolate(frame, [0, durationInFrames], [125, 200], {
+        extrapolateRight: "clamp",
+      });
 
   return (
     <AbsoluteFill
@@ -118,17 +123,18 @@ export const CastVideo: React.FC<CastProps> = ({
         backgroundSize: "200% 200%",
       }}
     >
-      {/* Subtle animated glow blobs in background */}
-      <AnimatedBackground frame={frame} duration={durationInFrames} />
+      {/* Subtle animated glow blobs — reel only */}
+      {!isDemo && <AnimatedBackground frame={frame} duration={durationInFrames} />}
 
-      <MusicTrack />
+      {/* Music — reel only */}
+      {!isDemo && <MusicTrack />}
 
       <Sequence durationInFrames={titleFrames}>
-        <TitleCard title={title} subtitle={subtitle} />
+        <TitleCard title={title} subtitle={subtitle} isDemo={isDemo} />
       </Sequence>
 
       {highlights.map((h, i) => {
-        const dur = getHighlightDuration(h);
+        const dur = getHighlightDuration(h, mode);
         return (
           <Sequence
             key={i}
@@ -142,6 +148,7 @@ export const CastVideo: React.FC<CastProps> = ({
                 total={highlights.length}
                 transition={TRANSITIONS[i % TRANSITIONS.length]}
                 durationSec={dur}
+                isDemo={isDemo}
               />
             ) : (
               <HighlightClip
@@ -150,6 +157,7 @@ export const CastVideo: React.FC<CastProps> = ({
                 total={highlights.length}
                 transition={TRANSITIONS[i % TRANSITIONS.length]}
                 durationSec={dur}
+                isDemo={isDemo}
               />
             )}
           </Sequence>
@@ -160,7 +168,7 @@ export const CastVideo: React.FC<CastProps> = ({
         from={titleFrames + cumulative}
         durationInFrames={endFrames}
       >
-        <EndCard text={endText || title} url={endUrl} />
+        <EndCard text={endText || title} url={endUrl} isDemo={isDemo} />
       </Sequence>
     </AbsoluteFill>
   );
@@ -408,12 +416,14 @@ const TextOverlay: React.FC<{ text: string; durationSec: number }> = ({
 
 // ─── Title Card ───────────────────────────────────────────
 
-const TitleCard: React.FC<{ title: string; subtitle?: string }> = ({
+const TitleCard: React.FC<{ title: string; subtitle?: string; isDemo?: boolean }> = ({
   title,
   subtitle,
+  isDemo,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const timing = isDemo ? DEMO_TIMING : REEL_TIMING;
 
   const titleSpring = spring({ fps, frame, config: { damping: 14 } });
   const subSpring = spring({
@@ -423,11 +433,11 @@ const TitleCard: React.FC<{ title: string; subtitle?: string }> = ({
   });
   const fadeOut = interpolate(
     frame,
-    [fps * (TITLE_DUR - TRANSITION_DUR), fps * TITLE_DUR],
+    [fps * (timing.title - timing.transition), fps * timing.title],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
-  const titleZoom = interpolate(frame, [0, fps * TITLE_DUR], [1, 1.08], {
+  const titleZoom = isDemo ? 1 : interpolate(frame, [0, fps * timing.title], [1, 1.08], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -449,7 +459,7 @@ const TitleCard: React.FC<{ title: string; subtitle?: string }> = ({
         <div
           style={{
             fontFamily: SANS,
-            fontSize: 76,
+            fontSize: isDemo ? 56 : 76,
             fontWeight: 800,
             color: WHITE,
             letterSpacing: -3,
@@ -463,7 +473,7 @@ const TitleCard: React.FC<{ title: string; subtitle?: string }> = ({
               transform: `translateY(${interpolate(subSpring, [0, 1], [20, 0])}px)`,
               opacity: subSpring,
               fontFamily: SANS,
-              fontSize: 28,
+              fontSize: isDemo ? 24 : 28,
               color: DIM,
               marginTop: 16,
               letterSpacing: 1,
@@ -485,82 +495,79 @@ const HighlightClip: React.FC<{
   total: number;
   transition: TransitionStyle;
   durationSec: number;
-}> = ({ highlight, index, total, transition, durationSec }) => {
+  isDemo?: boolean;
+}> = ({ highlight, index, total, transition, durationSec, isDemo }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width } = useVideoConfig();
+  const timing = isDemo ? DEMO_TIMING : REEL_TIMING;
 
-  // Entry animation — varies per clip
+  // Entry animation — simpler in demo mode
   const enterSpring = spring({
     fps,
     frame,
-    config: { damping: 18, stiffness: 80 },
+    config: isDemo ? { damping: 22, stiffness: 120 } : { damping: 18, stiffness: 80 },
   });
-  const entry = getEntryTransform(transition, enterSpring);
+  const entry = isDemo
+    ? { scale: 1, x: 0, y: 0 } // no transform in demo
+    : getEntryTransform(transition, enterSpring);
 
   // Fade transitions
-  const fadeIn = interpolate(frame, [0, fps * TRANSITION_DUR], [0, 1], {
+  const fadeIn = interpolate(frame, [0, fps * timing.transition], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
   const fadeOut = interpolate(
     frame,
-    [fps * (durationSec - TRANSITION_DUR), fps * durationSec],
+    [fps * (durationSec - timing.transition), fps * durationSec],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
   const opacity = Math.min(fadeIn, fadeOut);
 
-  // Zoom in/out cycle
-  const zoomIn = interpolate(
-    frame,
-    [fps * 0.8, fps * 2.0],
-    [1, 1.12],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: Easing.out(Easing.cubic),
-    }
-  );
-  const zoomOut = interpolate(
-    frame,
-    [fps * 2.5, fps * (durationSec - 0.5)],
-    [1.12, 1.02],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: Easing.inOut(Easing.cubic),
-    }
-  );
-  const zoom = frame < fps * 2.5 ? zoomIn : zoomOut;
+  // Zoom/pan — reel only
+  let zoom = 1;
+  let panY = 0;
+  if (!isDemo) {
+    const zoomIn = interpolate(frame, [fps * 0.8, fps * 2.0], [1, 1.12], {
+      extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic),
+    });
+    const zoomOut = interpolate(frame, [fps * 2.5, fps * (durationSec - 0.5)], [1.12, 1.02], {
+      extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.cubic),
+    });
+    zoom = frame < fps * 2.5 ? zoomIn : zoomOut;
+    panY = interpolate(frame, [fps * 0.8, fps * 2.0, fps * (durationSec - 1.0)], [0, -15, 5], {
+      extrapolateLeft: "clamp", extrapolateRight: "clamp",
+    });
+  }
 
-  // Vertical pan
-  const panY = interpolate(
-    frame,
-    [fps * 0.8, fps * 2.0, fps * (durationSec - 1.0)],
-    [0, -15, 5],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
-  );
+  // Line timing — faster reveal in demo (more lines to show)
+  const lineDelay = isDemo ? fps * 0.08 : fps * 0.15;
+  const firstLineFrame = isDemo ? fps * 0.25 : fps * 0.35;
 
-  // Line timing
-  const lineDelay = fps * 0.15;
-  const firstLineFrame = fps * 0.35;
+  const lines = highlight.lines || [];
 
   // Cursor tracking
-  const lastVisibleLineIdx = highlight.lines.findIndex((_, i) => {
+  const lastVisibleLineIdx = lines.findIndex((_, i) => {
     return frame < firstLineFrame + (i + 1) * lineDelay;
   });
   const cursorLineIdx =
     lastVisibleLineIdx === -1
-      ? highlight.lines.length - 1
+      ? lines.length - 1
       : Math.max(0, lastVisibleLineIdx - 1);
+
+  // Terminal sizing — wider in demo mode (landscape)
+  const termWidth = isDemo ? width - 160 : 820;
+  const termFontSize = isDemo ? 14 : 16;
+  const termMinHeight = isDemo ? 500 : 280;
+  const termPadding = isDemo ? "16px 20px" : "20px 24px";
 
   return (
     <AbsoluteFill style={{ opacity }}>
-      {/* Label + progress dots */}
+      {/* Chapter label */}
       <div
         style={{
           position: "absolute",
-          top: 45,
+          top: isDemo ? 24 : 45,
           left: 0,
           width: "100%",
           textAlign: "center",
@@ -570,36 +577,31 @@ const HighlightClip: React.FC<{
         <span
           style={{
             fontFamily: MONO,
-            fontSize: 13,
+            fontSize: isDemo ? 15 : 13,
             color: ACCENT,
-            letterSpacing: 4,
+            letterSpacing: isDemo ? 3 : 4,
             textTransform: "uppercase",
-            opacity: interpolate(enterSpring, [0, 1], [0, 0.6]),
+            opacity: interpolate(enterSpring, [0, 1], [0, isDemo ? 0.8 : 0.6]),
           }}
         >
           {highlight.label}
         </span>
-        <div
-          style={{
-            marginTop: 10,
-            display: "flex",
-            justifyContent: "center",
-            gap: 8,
-          }}
-        >
-          {Array.from({ length: total }).map((_, i) => (
-            <div
-              key={i}
-              style={{
-                width: i === index ? 24 : 8,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor:
-                  i === index ? ACCENT : "rgba(255,255,255,0.12)",
-              }}
-            />
-          ))}
-        </div>
+        {/* Progress dots — reel only */}
+        {!isDemo && (
+          <div style={{ marginTop: 10, display: "flex", justifyContent: "center", gap: 8 }}>
+            {Array.from({ length: total }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: i === index ? 24 : 8,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: i === index ? ACCENT : "rgba(255,255,255,0.12)",
+                }}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Terminal window */}
@@ -607,20 +609,23 @@ const HighlightClip: React.FC<{
         style={{
           justifyContent: "center",
           alignItems: "center",
-          padding: 40,
-          paddingTop: 100,
-          paddingBottom: 100,
+          padding: isDemo ? 20 : 40,
+          paddingTop: isDemo ? 60 : 100,
+          paddingBottom: isDemo ? 40 : 100,
         }}
       >
         <div
           style={{
-            transform: `scale(${entry.scale * zoom}) translate(${entry.x}px, ${entry.y + panY}px)`,
+            transform: isDemo
+              ? `scale(${enterSpring})`
+              : `scale(${entry.scale * zoom}) translate(${entry.x}px, ${entry.y + panY}px)`,
             transformOrigin: "center center",
-            width: 820,
-            borderRadius: 14,
+            width: termWidth,
+            borderRadius: isDemo ? 10 : 14,
             overflow: "hidden",
-            boxShadow:
-              "0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)",
+            boxShadow: isDemo
+              ? "0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)"
+              : "0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)",
           }}
         >
           {/* macOS title bar */}
@@ -633,30 +638,9 @@ const HighlightClip: React.FC<{
               gap: 8,
             }}
           >
-            <div
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: "#ff5555",
-              }}
-            />
-            <div
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: "#f1fa8c",
-              }}
-            />
-            <div
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: "#50fa7b",
-              }}
-            />
+            <div style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#ff5555" }} />
+            <div style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#f1fa8c" }} />
+            <div style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "#50fa7b" }} />
             <div style={{ flex: 1 }} />
           </div>
 
@@ -664,11 +648,11 @@ const HighlightClip: React.FC<{
           <div
             style={{
               backgroundColor: TERM_BG,
-              padding: "20px 24px",
-              minHeight: 280,
+              padding: termPadding,
+              minHeight: termMinHeight,
             }}
           >
-            {highlight.lines.map((line, lineIdx) => {
+            {lines.map((line, lineIdx) => {
               const lineFrame = firstLineFrame + lineIdx * lineDelay;
               const lineSpring = spring({
                 fps,
@@ -676,19 +660,18 @@ const HighlightClip: React.FC<{
                 config: { damping: 20, stiffness: 120 },
               });
               const lineOpacity = interpolate(lineSpring, [0, 1], [0, 1]);
-              const lineX = interpolate(lineSpring, [0, 1], [12, 0]);
+              const lineX = isDemo ? 0 : interpolate(lineSpring, [0, 1], [12, 0]);
 
               // Strip leading "$ " from text — renderer adds its own $ prefix
               const cleanText = line.isPrompt ? line.text.replace(/^\$\s*/, "") : line.text;
               let displayText = cleanText;
               let isTyping = false;
               if (line.isPrompt) {
-                const typingEnd = lineFrame + fps * 0.6;
+                const typingDur = isDemo ? 0.8 : 0.6;
+                const typingEnd = lineFrame + fps * typingDur;
                 if (frame < typingEnd) {
                   const progress = interpolate(
-                    frame,
-                    [lineFrame, typingEnd],
-                    [0, 1],
+                    frame, [lineFrame, typingEnd], [0, 1],
                     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
                   );
                   const chars = Math.floor(progress * cleanText.length);
@@ -697,14 +680,11 @@ const HighlightClip: React.FC<{
                 }
               }
 
-              const isZoomed = highlight.zoomLine === lineIdx;
+              const isZoomed = !isDemo && highlight.zoomLine === lineIdx;
               const lineZoom = isZoomed
-                ? interpolate(
-                    frame,
-                    [lineFrame + fps * 0.5, lineFrame + fps * 1],
-                    [1, 1.05],
-                    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
-                  )
+                ? interpolate(frame, [lineFrame + fps * 0.5, lineFrame + fps * 1], [1, 1.05], {
+                    extrapolateLeft: "clamp", extrapolateRight: "clamp",
+                  })
                 : 1;
 
               const showCursor = lineIdx === cursorLineIdx;
@@ -717,8 +697,8 @@ const HighlightClip: React.FC<{
                     transform: `translateX(${lineX}px) scale(${lineZoom})`,
                     transformOrigin: "left center",
                     fontFamily: MONO,
-                    fontSize: 16,
-                    lineHeight: 1.7,
+                    fontSize: termFontSize,
+                    lineHeight: isDemo ? 1.6 : 1.7,
                     color: line.dim ? DIM : line.color || WHITE,
                     fontWeight: line.bold ? 700 : 400,
                     whiteSpace: "pre",
@@ -738,11 +718,11 @@ const HighlightClip: React.FC<{
         </div>
       </AbsoluteFill>
 
-      {/* Mouse pointer — appears at start of each clip */}
-      <MousePointer />
+      {/* Mouse pointer — reel only */}
+      {!isDemo && <MousePointer />}
 
-      {/* Text overlay */}
-      {highlight.overlay && (
+      {/* Text overlay — reel only */}
+      {!isDemo && highlight.overlay && (
         <TextOverlay text={highlight.overlay} durationSec={durationSec} />
       )}
     </AbsoluteFill>
@@ -757,7 +737,8 @@ const BrowserHighlightClip: React.FC<{
   total: number;
   transition: TransitionStyle;
   durationSec: number;
-}> = ({ highlight, index, total, transition, durationSec }) => {
+  isDemo?: boolean;
+}> = ({ highlight, index, total, transition, durationSec, isDemo }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -768,57 +749,50 @@ const BrowserHighlightClip: React.FC<{
   });
   const entry = getEntryTransform(transition, enterSpring);
 
-  const fadeIn = interpolate(frame, [0, fps * TRANSITION_DUR], [0, 1], {
+  const timing = isDemo ? DEMO_TIMING : REEL_TIMING;
+
+  const fadeIn = interpolate(frame, [0, fps * timing.transition], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
   const fadeOut = interpolate(
     frame,
-    [fps * (durationSec - TRANSITION_DUR), fps * durationSec],
+    [fps * (durationSec - timing.transition), fps * durationSec],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
   const opacity = Math.min(fadeIn, fadeOut);
 
-  // Focal zoom — applied to video content only, not browser chrome
+  // Focal zoom — reel only
   const fx = highlight.focusX ?? 0.5;
   const fy = highlight.focusY ?? 0.5;
 
-  const focalZoomIn = interpolate(frame, [fps * 1.0, fps * 3.0], [1, 1.15], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: Easing.out(Easing.cubic),
-  });
-  const focalZoomOut = interpolate(
-    frame,
-    [fps * 3.5, fps * (durationSec - 0.5)],
-    [1.15, 1.02],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: Easing.inOut(Easing.cubic),
-    }
-  );
-  const focalZoom = frame < fps * 3.5 ? focalZoomIn : focalZoomOut;
-
-  // Entry pan
-  const panY = interpolate(
-    frame,
-    [fps * 1.0, fps * 3.0, fps * (durationSec - 1.0)],
-    [0, -10, 5],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
-  );
+  let focalZoom = 1;
+  let panY = 0;
+  if (!isDemo) {
+    const focalZoomIn = interpolate(frame, [fps * 1.0, fps * 3.0], [1, 1.15], {
+      extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic),
+    });
+    const focalZoomOut = interpolate(frame, [fps * 3.5, fps * (durationSec - 0.5)], [1.15, 1.02], {
+      extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.cubic),
+    });
+    focalZoom = frame < fps * 3.5 ? focalZoomIn : focalZoomOut;
+    panY = interpolate(frame, [fps * 1.0, fps * 3.0, fps * (durationSec - 1.0)], [0, -10, 5], {
+      extrapolateLeft: "clamp", extrapolateRight: "clamp",
+    });
+  }
 
   const videoSrc = highlight.videoSrc!;
   const startFrom = Math.round((highlight.videoStartSec || 0) * fps);
+  const browserWidth = isDemo ? 1600 : 880;
 
   return (
     <AbsoluteFill style={{ opacity }}>
-      {/* Label + progress dots */}
+      {/* Chapter label */}
       <div
         style={{
           position: "absolute",
-          top: 45,
+          top: isDemo ? 24 : 45,
           left: 0,
           width: "100%",
           textAlign: "center",
@@ -828,36 +802,30 @@ const BrowserHighlightClip: React.FC<{
         <span
           style={{
             fontFamily: MONO,
-            fontSize: 13,
+            fontSize: isDemo ? 15 : 13,
             color: ACCENT,
-            letterSpacing: 4,
+            letterSpacing: isDemo ? 3 : 4,
             textTransform: "uppercase",
-            opacity: interpolate(enterSpring, [0, 1], [0, 0.6]),
+            opacity: interpolate(enterSpring, [0, 1], [0, isDemo ? 0.8 : 0.6]),
           }}
         >
           {highlight.label}
         </span>
-        <div
-          style={{
-            marginTop: 10,
-            display: "flex",
-            justifyContent: "center",
-            gap: 8,
-          }}
-        >
-          {Array.from({ length: total }).map((_, i) => (
-            <div
-              key={i}
-              style={{
-                width: i === index ? 24 : 8,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor:
-                  i === index ? ACCENT : "rgba(255,255,255,0.12)",
-              }}
-            />
-          ))}
-        </div>
+        {!isDemo && (
+          <div style={{ marginTop: 10, display: "flex", justifyContent: "center", gap: 8 }}>
+            {Array.from({ length: total }).map((_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: i === index ? 24 : 8,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: i === index ? ACCENT : "rgba(255,255,255,0.12)",
+                }}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Browser window */}
@@ -865,20 +833,23 @@ const BrowserHighlightClip: React.FC<{
         style={{
           justifyContent: "center",
           alignItems: "center",
-          padding: 40,
-          paddingTop: 100,
-          paddingBottom: 100,
+          padding: isDemo ? 20 : 40,
+          paddingTop: isDemo ? 60 : 100,
+          paddingBottom: isDemo ? 40 : 100,
         }}
       >
         <div
           style={{
-            transform: `scale(${entry.scale}) translate(${entry.x}px, ${entry.y + panY}px)`,
+            transform: isDemo
+              ? `scale(${enterSpring})`
+              : `scale(${entry.scale}) translate(${entry.x}px, ${entry.y + panY}px)`,
             transformOrigin: "center center",
-            width: 880,
-            borderRadius: 14,
+            width: browserWidth,
+            borderRadius: isDemo ? 10 : 14,
             overflow: "hidden",
-            boxShadow:
-              "0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)",
+            boxShadow: isDemo
+              ? "0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)"
+              : "0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)",
           }}
         >
           {/* Browser chrome */}
@@ -946,8 +917,8 @@ const BrowserHighlightClip: React.FC<{
         </div>
       </AbsoluteFill>
 
-      {/* Text overlay */}
-      {highlight.overlay && (
+      {/* Text overlay — reel only */}
+      {!isDemo && highlight.overlay && (
         <TextOverlay text={highlight.overlay} durationSec={durationSec} />
       )}
     </AbsoluteFill>
@@ -1080,9 +1051,10 @@ const BrowserCursor: React.FC<{
 
 // ─── End Card (CTA) ───────────────────────────────────────
 
-const EndCard: React.FC<{ text: string; url?: string }> = ({ text, url }) => {
+const EndCard: React.FC<{ text: string; url?: string; isDemo?: boolean }> = ({ text, url, isDemo }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const timing = isDemo ? DEMO_TIMING : REEL_TIMING;
 
   const cmdSpring = spring({ fps, frame, config: { damping: 14 } });
   const urlSpring = spring({
@@ -1095,7 +1067,7 @@ const EndCard: React.FC<{ text: string; url?: string }> = ({ text, url }) => {
     frame: Math.max(0, frame - 18),
     config: { damping: 14 },
   });
-  const endZoom = interpolate(frame, [0, fps * END_DUR], [1.05, 1], {
+  const endZoom = isDemo ? 1 : interpolate(frame, [0, fps * timing.end], [1.05, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
@@ -1117,8 +1089,8 @@ const EndCard: React.FC<{ text: string; url?: string }> = ({ text, url }) => {
       >
         <div
           style={{
-            fontFamily: MONO,
-            fontSize: 30,
+            fontFamily: isDemo ? SANS : MONO,
+            fontSize: isDemo ? 28 : 30,
             color: WHITE,
             padding: "18px 36px",
             borderRadius: 14,
@@ -1127,9 +1099,9 @@ const EndCard: React.FC<{ text: string; url?: string }> = ({ text, url }) => {
             boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
           }}
         >
-          <span style={{ color: ACCENT }}>$ </span>
+          {!isDemo && <span style={{ color: ACCENT }}>$ </span>}
           {text}
-          <Cursor visible blink />
+          {!isDemo && <Cursor visible blink />}
         </div>
       </div>
 
@@ -1140,7 +1112,7 @@ const EndCard: React.FC<{ text: string; url?: string }> = ({ text, url }) => {
             opacity: urlSpring,
             transform: `translateY(${interpolate(urlSpring, [0, 1], [15, 0])}px)`,
             fontFamily: SANS,
-            fontSize: 20,
+            fontSize: isDemo ? 18 : 20,
             color: DIM,
             letterSpacing: 0.5,
           }}

@@ -198,7 +198,7 @@ def record_demo(steps: list[dict], workdir: str, output_path: str):
 
 
 def extract_highlights(cast_path: str, context: str, guidelines: str = "") -> list[dict]:
-    """Ask Claude to pick 3-4 highlight moments from the recorded session."""
+    """Ask Claude to pick highlight moments from the recorded session."""
     # Read the asciicast and strip to just the text content
     lines_output = []
     with open(cast_path) as f:
@@ -218,7 +218,29 @@ def extract_highlights(cast_path: str, context: str, guidelines: str = "") -> li
 
     guidelines_block = f"\n\nAdditional guidelines: {guidelines}" if guidelines else ""
 
-    prompt = f"""You are creating a highlights reel for a CLI tool demo video. Here is the full terminal output:
+    # Demo mode: more chapters, more lines, show full flows
+    is_demo = "demo" in guidelines.lower() if guidelines else False
+
+    if is_demo:
+        prompt = f"""You are creating chapter-based highlights for a demo walkthrough video. Here is the full terminal output:
+
+---
+{clean[:6000]}
+---
+
+Context: {context}{guidelines_block}
+
+Create 4-6 chapters that walk through the full demo. Each chapter shows a complete command and its output. For each chapter, return:
+- "label": chapter name (1-3 words) like "Setup", "Run Command", "View Results", "Verify"
+- "lines": array of objects, each with "text" (string), and optionally "color" (hex), "bold" (bool), "dim" (bool), "isPrompt" (bool if it's a shell command)
+
+Each chapter should have 12-20 lines. Show the COMPLETE command and output for each step.
+Include the prompt line (isPrompt: true) followed by the actual output.
+Use these colors: green="#50fa7b", yellow="#f1fa8c", purple="#bd93f9", red="#ff5555", dim="#6272a4", white="#f8f8f2"
+
+Return ONLY a JSON array. No markdown fences."""
+    else:
+        prompt = f"""You are creating a highlights reel for a CLI tool demo video. Here is the full terminal output:
 
 ---
 {clean[:3000]}

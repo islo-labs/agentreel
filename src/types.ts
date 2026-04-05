@@ -38,6 +38,7 @@ export interface CastProps {
   endText?: string; // closing CTA command, e.g. "npx agentreel"
   endUrl?: string; // URL shown under CTA, e.g. "github.com/islo-labs/agentreel"
   gradient?: [string, string]; // background gradient colors
+  mode?: "reel" | "demo"; // "reel" = 1080x1080 marketing clip, "demo" = 1920x1080 chapter walkthrough
 }
 
 export const defaultProps: CastProps = {

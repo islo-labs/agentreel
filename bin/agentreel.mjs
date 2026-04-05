@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { readFileSync, statSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -25,7 +25,8 @@ function parseArgs() {
     }
     if (arg === "--cmd" || arg === "-c") flags.cmd = args[++i];
     else if (arg === "--url" || arg === "-u") flags.url = args[++i];
-    else if (arg === "--prompt" || arg === "-p") flags.prompt = args[++i];
+    else if (arg === "--pr") flags.pr = args[++i];
+    else if (arg === "--start") flags.start = args[++i];
     else if (arg === "--title" || arg === "-t") flags.title = args[++i];
     else if (arg === "--output" || arg === "-o") flags.output = args[++i];
     else if (arg === "--music") flags.music = args[++i];
@@ -40,13 +41,16 @@ function printUsage() {
   console.log(`agentreel — Turn your web apps and CLIs into viral clips
 
 Usage:
+  agentreel --pr 123                             # demo a PR (reads context from GitHub)
+  agentreel --pr owner/repo#123                  # demo a PR (explicit repo)
   agentreel --cmd "npx my-cli-tool"              # CLI demo
   agentreel --url http://localhost:3000           # browser demo
 
 Flags:
+      --pr <ref>          PR number, owner/repo#N, or full GitHub URL
+      --start <cmd>       command to start a dev server (for browser PR demos)
   -c, --cmd <command>     CLI command to demo
   -u, --url <url>         URL to demo (browser mode)
-  -p, --prompt <text>     description of what the tool does
   -t, --title <text>      video title
   -o, --output <file>     output file (default: agentreel.mp4)
   -a, --auth <file>       Playwright storage state (cookies/auth) for browser demos
@@ -399,6 +403,152 @@ function autoDescribe(cmd, url) {
   return cmd ? cmd.split(/\s+/).pop() : "Web app demo";
 }
 
+// ── PR Context ─────────────────────────────────────────────
+
+function fetchPRContext(prRef) {
+  try {
+    execFileSync("gh", ["--version"], { stdio: "ignore" });
+  } catch {
+    console.error("Error: `gh` CLI is required for --pr mode. Install it from https://cli.github.com");
+    process.exit(1);
+  }
+
+  const prJson = execFileSync("gh", [
+    "pr", "view", String(prRef),
+    "--json", "title,body,headRefName,baseRefName,url,number",
+  ], { encoding: "utf-8", timeout: 30000 });
+  const pr = JSON.parse(prJson);
+
+  let diff = "";
+  try {
+    diff = execFileSync("gh", ["pr", "diff", String(prRef)], {
+      encoding: "utf-8", timeout: 30000,
+    });
+  } catch (e) {
+    console.error(`  Warning: could not fetch PR diff: ${e.message}`);
+  }
+
+  // Read README from cwd (the agent already has the repo checked out)
+  let readme = "";
+  for (const name of ["README.md", "readme.md", "README", "README.rst"]) {
+    const p = join(process.cwd(), name);
+    if (existsSync(p)) {
+      readme = readFileSync(p, "utf-8");
+      break;
+    }
+  }
+
+  return { ...pr, diff, readme };
+}
+
+function planDemoFromPR(prContext, guidelines) {
+  const guidelinesBlock = guidelines
+    ? `\nAdditional guidelines: ${guidelines}`
+    : "";
+
+  const prompt = `You are planning a demo for a Pull Request. Your job is to decide whether this is a CLI or browser demo, and provide the details needed to record it.
+
+PR Title: ${prContext.title}
+PR Description: ${prContext.body || "(no description)"}
+
+Diff (truncated):
+${prContext.diff.slice(0, 8000)}
+
+README (truncated):
+${prContext.readme.slice(0, 3000)}${guidelinesBlock}
+
+Return a JSON object with these fields:
+{
+  "type": "cli" or "browser",
+  "command": "the command to run" (for CLI demos, e.g. "npx my-tool --help") or null,
+  "url": "http://localhost:3000/relevant-page" (for browser demos) or null,
+  "description": "one-sentence summary of what the PR does",
+  "title": "short video title (2-4 words)",
+  "guidelines": "specific instructions for the demo recorder about what steps to show and what to focus on"
+}
+
+Rules:
+- If the PR changes a CLI tool, script, or backend logic that can be demonstrated in a terminal, use "cli".
+- If the PR changes a web UI, frontend, or something best shown in a browser, use "browser".
+- The "guidelines" field should tell the demo recorder exactly what to demonstrate — the specific feature or fix from this PR.
+- The demo should show the actual changes working honestly, not market the product.
+- Return ONLY the JSON object, no markdown fences.`;
+
+  const result = execFileSync("claude", ["-p", prompt, "--output-format", "text"], {
+    encoding: "utf-8",
+    timeout: 60000,
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+
+  // Strip markdown fences if present
+  let text = result;
+  if (text.includes("```")) {
+    const parts = text.split("```");
+    for (let part of parts) {
+      part = part.trim();
+      if (part.startsWith("json")) part = part.slice(4).trim();
+      if (part.startsWith("{")) { text = part; break; }
+    }
+  }
+
+  return JSON.parse(text);
+}
+
+// ── Dev Server ─────────────────────────────────────────────
+
+function startDevServer(command) {
+  console.error(`  Starting dev server: ${command}`);
+  const proc = spawn("sh", ["-c", command], {
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
+
+  // Wait for server to be ready (look for common ready signals in output)
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      console.error("  Dev server ready (timeout — assuming started)");
+      resolve(proc);
+    }, 30000);
+
+    const onData = (data) => {
+      const text = data.toString();
+      if (/localhost|ready|started|listening|compiled/i.test(text)) {
+        clearTimeout(timeout);
+        // Give it a moment to fully start
+        setTimeout(() => {
+          console.error("  Dev server ready");
+          resolve(proc);
+        }, 2000);
+      }
+    };
+
+    proc.stdout.on("data", onData);
+    proc.stderr.on("data", onData);
+
+    proc.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(new Error(`Dev server failed to start: ${err.message}`));
+    });
+
+    proc.on("exit", (code) => {
+      clearTimeout(timeout);
+      if (code !== null && code !== 0) {
+        reject(new Error(`Dev server exited with code ${code}`));
+      }
+    });
+  });
+}
+
+function stopDevServer(proc) {
+  if (!proc || proc.killed) return;
+  try {
+    // Kill the process group (detached process + children)
+    process.kill(-proc.pid, "SIGTERM");
+  } catch {
+    try { proc.kill("SIGTERM"); } catch { /* already dead */ }
+  }
+}
+
 // ── Main ────────────────────────────────────────────────────
 
 async function main() {
@@ -406,83 +556,158 @@ async function main() {
   const output = flags.output || "agentreel.mp4";
   const noShare = flags.noShare;
 
-  let demoCmd = flags.cmd;
-  let demoURL = flags.url;
-  let prompt = flags.prompt;
-
-  // Auto-generate description if not provided
-  if (!prompt) {
-    console.error("Generating description...");
-    prompt = autoDescribe(demoCmd, demoURL);
-    console.error(`  "${prompt}"`);
-  }
-
-  if (!demoCmd && !demoURL) {
-    console.error("Please provide --cmd or --url.\n");
+  if (!flags.cmd && !flags.url && !flags.pr) {
+    console.error("Please provide --pr, --cmd, or --url.\n");
     printUsage();
     process.exit(1);
   }
 
-  let videoTitle = flags.title || demoCmd || demoURL;
+  // ── PR mode ──────────────────────────────────────────────
+  if (flags.pr) {
+    console.error("Fetching PR context...");
+    const prContext = fetchPRContext(flags.pr);
+    console.error(`  PR #${prContext.number}: ${prContext.title}`);
 
-  if (demoCmd) {
+    console.error("Planning demo...");
+    const plan = planDemoFromPR(prContext, flags.guidelines);
+    console.error(`  Type: ${plan.type}, "${plan.description}"`);
+
+    const videoTitle = flags.title || plan.title || prContext.title;
+    const description = plan.description;
+    // Prepend "demo" to guidelines so downstream scripts know to use chapter-based extraction
+    const demoGuidelines = `[demo] ${plan.guidelines || ""}`.trim();
+
+    if (plan.type === "browser") {
+      const url = plan.url || "http://localhost:3000";
+      let serverProc = null;
+
+      try {
+        if (flags.start) {
+          serverProc = await startDevServer(flags.start);
+        }
+
+        ensureBrowserDeps();
+        console.error("Step 1/3: Recording browser demo...");
+        const videoPath = recordBrowser(url, demoGuidelines, flags.auth, demoGuidelines);
+
+        const publicDir = join(ROOT, "public");
+        if (!existsSync(publicDir)) mkdirSync(publicDir, { recursive: true });
+        copyFileSync(videoPath, join(publicDir, "browser-demo.mp4"));
+
+        console.error("Step 2/3: Building highlights...");
+        const clicksPath = videoPath.replace(".mp4", "-clicks.json");
+        let allClicks = [];
+        if (existsSync(clicksPath)) {
+          allClicks = JSON.parse(readFileSync(clicksPath, "utf-8"));
+          console.error(`  ${allClicks.length} clicks captured`);
+        }
+        const highlights = buildBrowserHighlights(allClicks, videoPath, demoGuidelines, demoGuidelines);
+
+        console.error("Step 3/3: Rendering video...");
+        await renderVideo({
+          title: videoTitle,
+          subtitle: description,
+          highlights,
+          endText: prContext.title,
+          endUrl: prContext.url,
+          mode: "demo",
+        }, output, flags.music);
+      } finally {
+        stopDevServer(serverProc);
+      }
+    } else {
+      // CLI demo
+      if (!plan.command) {
+        console.error("Error: Claude could not determine a command to demo for this PR.");
+        process.exit(1);
+      }
+
+      console.error("Step 1/3: Recording CLI demo...");
+      const castPath = recordCLI(plan.command, process.cwd(), description, demoGuidelines);
+
+      console.error("Step 2/3: Extracting highlights...");
+      const highlightsPath = extractHighlightsFromCast(castPath, description, demoGuidelines);
+      const highlights = JSON.parse(readFileSync(highlightsPath, "utf-8"));
+      console.error(`  ${highlights.length} highlights extracted`);
+
+      console.error("Step 3/3: Rendering video...");
+      await renderVideo({
+        title: videoTitle,
+        subtitle: description,
+        highlights,
+        endText: plan.command,
+        endUrl: prContext.url,
+        mode: "demo",
+      }, output, flags.music);
+    }
+
+    if (!noShare) {
+      await shareFlow(resolve(output), videoTitle, description);
+    }
+    return;
+  }
+
+  // ── Manual modes (--cmd / --url) ─────────────────────────
+  console.error("Generating description...");
+  const description = autoDescribe(flags.cmd, flags.url);
+  console.error(`  "${description}"`);
+
+  let videoTitle = flags.title || flags.cmd || flags.url;
+
+  if (flags.cmd) {
     console.error("Step 1/3: Recording CLI demo...");
-    const castPath = recordCLI(demoCmd, process.cwd(), prompt, flags.guidelines);
+    const castPath = recordCLI(flags.cmd, process.cwd(), description, flags.guidelines);
 
     console.error("Step 2/3: Extracting highlights...");
-    const highlightsPath = extractHighlightsFromCast(castPath, prompt, flags.guidelines);
+    const highlightsPath = extractHighlightsFromCast(castPath, description, flags.guidelines);
     const highlights = JSON.parse(readFileSync(highlightsPath, "utf-8"));
     console.error(`  ${highlights.length} highlights extracted`);
 
     console.error("Step 3/3: Rendering video...");
     await renderVideo({
       title: videoTitle,
-      subtitle: prompt,
+      subtitle: description,
       highlights,
-      endText: demoCmd,
+      endText: flags.cmd,
     }, output, flags.music);
 
     if (!noShare) {
-      await shareFlow(resolve(output), videoTitle, prompt);
+      await shareFlow(resolve(output), videoTitle, description);
     }
     return;
   }
 
-  if (demoURL) {
-    const task = prompt || "Explore the main features of this app";
+  if (flags.url) {
+    const task = description || "Explore the main features of this app";
 
     ensureBrowserDeps();
     console.error("Step 1/3: Recording browser demo...");
-    const videoPath = recordBrowser(demoURL, task, flags.auth, flags.guidelines);
+    const videoPath = recordBrowser(flags.url, task, flags.auth, flags.guidelines);
 
-    // Copy video to Remotion public dir so it can be served
     const publicDir = join(ROOT, "public");
     if (!existsSync(publicDir)) mkdirSync(publicDir, { recursive: true });
     copyFileSync(videoPath, join(publicDir, "browser-demo.mp4"));
 
     console.error("Step 2/3: Building highlights...");
-
-    // Read click data — this is the primary signal for highlights
     const clicksPath = videoPath.replace(".mp4", "-clicks.json");
     let allClicks = [];
     if (existsSync(clicksPath)) {
       allClicks = JSON.parse(readFileSync(clicksPath, "utf-8"));
       console.error(`  ${allClicks.length} clicks captured`);
     }
-
     const highlights = buildBrowserHighlights(allClicks, videoPath, task, flags.guidelines);
 
     console.error("Step 3/3: Rendering video...");
     await renderVideo({
       title: videoTitle,
-      subtitle: prompt,
+      subtitle: description,
       highlights,
-      endText: demoURL,
-      endUrl: demoURL,
+      endText: flags.url,
+      endUrl: flags.url,
     }, output, flags.music);
 
     if (!noShare) {
-      await shareFlow(resolve(output), videoTitle, prompt);
+      await shareFlow(resolve(output), videoTitle, description);
     }
     return;
   }
