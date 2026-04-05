@@ -215,6 +215,16 @@ def extract_highlights(cast_path: str, context: str, guidelines: str = "") -> li
     raw_output = "".join(lines_output)
     # Clean ANSI for Claude to read, but keep the raw for display
     clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw_output)
+    # Collapse carriage-return overwrites (spinners, progress bars).
+    # \r means "go back to line start" — keep only the final version of each line.
+    collapsed_lines = []
+    for line in clean.split('\n'):
+        parts = line.split('\r')
+        # Keep only the last non-empty segment (what's actually visible)
+        final = parts[-1].strip() if parts else ""
+        if final and (not collapsed_lines or final != collapsed_lines[-1]):
+            collapsed_lines.append(final)
+    clean = '\n'.join(collapsed_lines)
 
     guidelines_block = f"\n\nAdditional guidelines: {guidelines}" if guidelines else ""
 
