@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawn } from "node:child_process";
-import { readFileSync, statSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -280,6 +280,101 @@ Labels: 1-2 words each, specific to this app (not generic). Overlays: short punc
 
   console.error(`  ${highlights.length} highlights (${clickHighlights.length} from clicks, ${highlights.length - clickHighlights.length} filler)`);
   return highlights;
+}
+
+// ── SVG Fallback ───────────────────────────────────────────
+
+function escSvg(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function renderSVG(props, output) {
+  const TERM_BG = "#282a36";
+  const TITLE_BAR = "#1e1f29";
+  const ACCENT = "#50fa7b";
+  const DIM = "#6272a4";
+  const WHITE = "#f8f8f2";
+  const FONT = '"SF Mono", "Fira Code", "Cascadia Code", monospace';
+  const SANS = '-apple-system, "SF Pro Display", system-ui, sans-serif';
+
+  const W = props.mode === "demo" ? 1200 : 700;
+  const PAD = 32;
+  const LINE_H = 22;
+  const TERM_PAD = 16;
+  const TITLE_BAR_H = 36;
+  const CHAPTER_GAP = 28;
+  const LABEL_H = 24;
+  const FONT_SIZE = 13;
+
+  let y = PAD;
+  let blocks = "";
+
+  // Title
+  blocks += `<text x="${W / 2}" y="${y + 28}" font-family="${escSvg(SANS)}" font-size="32" font-weight="800" fill="${WHITE}" text-anchor="middle">${escSvg(props.title)}</text>`;
+  y += 40;
+  if (props.subtitle) {
+    blocks += `<text x="${W / 2}" y="${y + 18}" font-family="${escSvg(SANS)}" font-size="16" fill="${DIM}" text-anchor="middle">${escSvg(props.subtitle)}</text>`;
+    y += 28;
+  }
+  y += 16;
+
+  for (const hl of props.highlights) {
+    if (!hl.lines || hl.lines.length === 0) continue;
+
+    // Chapter label
+    blocks += `<text x="${PAD}" y="${y + 14}" font-family="${escSvg(FONT)}" font-size="11" fill="${ACCENT}" letter-spacing="2" text-transform="uppercase">${escSvg(hl.label.toUpperCase())}</text>`;
+    y += LABEL_H;
+
+    const bodyH = TERM_PAD * 2 + hl.lines.length * LINE_H;
+    const termH = TITLE_BAR_H + bodyH;
+
+    // Terminal window
+    blocks += `<rect x="${PAD}" y="${y}" width="${W - PAD * 2}" height="${termH}" rx="8" fill="${TITLE_BAR}"/>`;
+    // Traffic lights
+    blocks += `<circle cx="${PAD + 16}" cy="${y + TITLE_BAR_H / 2}" r="5" fill="#ff5555"/>`;
+    blocks += `<circle cx="${PAD + 34}" cy="${y + TITLE_BAR_H / 2}" r="5" fill="#f1fa8c"/>`;
+    blocks += `<circle cx="${PAD + 52}" cy="${y + TITLE_BAR_H / 2}" r="5" fill="#50fa7b"/>`;
+    // Body
+    blocks += `<rect x="${PAD}" y="${y + TITLE_BAR_H}" width="${W - PAD * 2}" height="${bodyH}" fill="${TERM_BG}"/>`;
+
+    let lineY = y + TITLE_BAR_H + TERM_PAD;
+    for (const line of hl.lines) {
+      const color = line.dim ? DIM : line.color || WHITE;
+      const weight = line.bold ? "700" : "400";
+      const prefix = line.isPrompt ? `<tspan fill="${ACCENT}">$ </tspan>` : "";
+      const text = line.isPrompt ? line.text.replace(/^\$\s*/, "") : line.text;
+      blocks += `<text x="${PAD + TERM_PAD}" y="${lineY + FONT_SIZE}" font-family="${escSvg(FONT)}" font-size="${FONT_SIZE}" font-weight="${weight}" fill="${color}">${prefix}${escSvg(text)}</text>`;
+      lineY += LINE_H;
+    }
+
+    y += termH + CHAPTER_GAP;
+  }
+
+  // End text
+  if (props.endUrl) {
+    blocks += `<text x="${W / 2}" y="${y + 16}" font-family="${escSvg(SANS)}" font-size="14" fill="${DIM}" text-anchor="middle">${escSvg(props.endUrl)}</text>`;
+    y += 28;
+  }
+  y += PAD;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${y}" viewBox="0 0 ${W} ${y}">
+<rect width="${W}" height="${y}" fill="#0f0f1a"/>
+${blocks}
+</svg>`;
+
+  writeFileSync(output, svg);
+  console.error(`\nDone: ${output} (SVG fallback)`);
+}
+
+async function renderWithFallback(props, output, musicPath) {
+  try {
+    await renderVideo(props, output, musicPath);
+  } catch (e) {
+    console.error(`  Video rendering failed: ${e.message}`);
+    const svgOutput = output.replace(/\.[^.]+$/, ".svg");
+    console.error(`  Falling back to SVG: ${svgOutput}`);
+    renderSVG(props, svgOutput);
+  }
 }
 
 // ── Render ──────────────────────────────────────────────────
@@ -566,7 +661,7 @@ async function main() {
         const highlights = buildBrowserHighlights(allClicks, videoPath, demoGuidelines, demoGuidelines);
 
         console.error("Step 3/3: Rendering video...");
-        await renderVideo({
+        await renderWithFallback({
           title: videoTitle,
           subtitle: description,
           highlights,
@@ -593,7 +688,7 @@ async function main() {
       console.error(`  ${highlights.length} highlights extracted`);
 
       console.error("Step 3/3: Rendering video...");
-      await renderVideo({
+      await renderWithFallback({
         title: videoTitle,
         subtitle: description,
         highlights,
@@ -622,7 +717,7 @@ async function main() {
     console.error(`  ${highlights.length} highlights extracted`);
 
     console.error("Step 3/3: Rendering video...");
-    await renderVideo({
+    await renderWithFallback({
       title: videoTitle,
       highlights,
       endText: flags.cmd,
@@ -655,7 +750,7 @@ async function main() {
     const highlights = buildBrowserHighlights(allClicks, videoPath, task, flags.guidelines);
 
     console.error("Step 3/3: Rendering video...");
-    await renderVideo({
+    await renderWithFallback({
       title: videoTitle,
       highlights,
       endText: flags.url,

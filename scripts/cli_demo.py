@@ -63,7 +63,7 @@ Return ONLY the JSON array, no markdown, no explanation."""
         [claude, "-p", prompt, "--output-format", "text"],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=300,
     )
 
     if result.returncode != 0:
@@ -213,17 +213,20 @@ def extract_highlights(cast_path: str, context: str, guidelines: str = "") -> li
                 continue
 
     raw_output = "".join(lines_output)
-    # Clean ANSI for Claude to read, but keep the raw for display
+    # Clean ANSI escape codes
     clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw_output)
+    # Strip other common escape sequences (title sets, OSC, etc.)
+    clean = re.sub(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', '', clean)
     # Collapse carriage-return overwrites (spinners, progress bars).
     # \r means "go back to line start" — keep only the final version of each line.
     collapsed_lines = []
     for line in clean.split('\n'):
         parts = line.split('\r')
-        # Keep only the last non-empty segment (what's actually visible)
         final = parts[-1].strip() if parts else ""
-        if final and (not collapsed_lines or final != collapsed_lines[-1]):
-            collapsed_lines.append(final)
+        if final:
+            # Deduplicate consecutive identical lines (spinner frames)
+            if not collapsed_lines or final != collapsed_lines[-1]:
+                collapsed_lines.append(final)
     clean = '\n'.join(collapsed_lines)
 
     guidelines_block = f"\n\nAdditional guidelines: {guidelines}" if guidelines else ""
@@ -231,49 +234,46 @@ def extract_highlights(cast_path: str, context: str, guidelines: str = "") -> li
     # Demo mode: more chapters, more lines, show full flows
     is_demo = "demo" in guidelines.lower() if guidelines else False
 
-    if is_demo:
-        prompt = f"""You are creating chapter-based highlights for a demo walkthrough video. Here is the full terminal output:
+    # If terminal output is empty (e.g. tmux sessions, interactive tools),
+    # tell Claude to generate representative highlights from context alone
+    output_block = f"\nTerminal output:\n---\n{clean[:6000 if is_demo else 3000]}\n---" if clean.strip() else "\n(No terminal output captured — generate representative highlights from the context below.)"
 
----
-{clean[:6000]}
----
+    if is_demo:
+        prompt = f"""You are creating chapter-based highlights for a demo walkthrough video.
+{output_block}
 
 Context: {context}{guidelines_block}
 
-Create 4-6 chapters that walk through the full demo. Each chapter shows a complete command and its output. For each chapter, return:
-- "label": chapter name (1-3 words) like "Setup", "Run Command", "View Results", "Verify"
-- "lines": array of objects, each with "text" (string), and optionally "color" (hex), "bold" (bool), "dim" (bool), "isPrompt" (bool if it's a shell command)
+Create 4-6 chapters that walk through the demo. For each chapter, return:
+- "label": chapter name (1-3 words)
+- "lines": array of objects with "text" (string), optionally "color" (hex), "bold" (bool), "dim" (bool), "isPrompt" (bool)
 
-Each chapter should have 12-20 lines. Show the COMPLETE command and output for each step.
-Include the prompt line (isPrompt: true) followed by the actual output.
-Use these colors: green="#50fa7b", yellow="#f1fa8c", purple="#bd93f9", red="#ff5555", dim="#6272a4", white="#f8f8f2"
+Each chapter: 12-20 lines. Include the prompt (isPrompt: true) and realistic output.
+Colors: green="#50fa7b", yellow="#f1fa8c", purple="#bd93f9", red="#ff5555", dim="#6272a4", white="#f8f8f2"
 
 Return ONLY a JSON array. No markdown fences."""
     else:
-        prompt = f"""You are creating a highlights reel for a CLI tool demo video. Here is the full terminal output:
-
----
-{clean[:3000]}
----
+        prompt = f"""You are creating a highlights reel for a CLI demo video.
+{output_block}
 
 Context: {context}{guidelines_block}
 
-Pick 3-4 highlight moments that would look impressive in a short video. For each highlight, return:
-- "label": short label (1-2 words) like "Initialize", "Configure", "Run", "Results"
-- "lines": array of objects, each with "text" (string), and optionally "color" (hex), "bold" (bool), "dim" (bool), "isPrompt" (bool if it's a shell command)
-- "zoomLine": (optional) index of the most impressive line to zoom into
+Pick 3-4 highlight moments. For each, return:
+- "label": 1-2 word label
+- "lines": array of objects with "text", optionally "color" (hex), "bold", "dim", "isPrompt"
+- "zoomLine": (optional) index of the most impressive line
 
-Each highlight should have 4-8 lines max. Keep the text concise.
-Use these colors: green="#50fa7b", yellow="#f1fa8c", purple="#bd93f9", red="#ff5555", dim="#6272a4", white="#f8f8f2"
+Each highlight: 4-8 lines max.
+Colors: green="#50fa7b", yellow="#f1fa8c", purple="#bd93f9", red="#ff5555", dim="#6272a4", white="#f8f8f2"
 
-Return ONLY a JSON array of highlights. No markdown fences."""
+Return ONLY a JSON array. No markdown fences."""
 
     claude = find_claude()
     result = subprocess.run(
         [claude, "-p", prompt, "--output-format", "text"],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=300,
     )
 
     text = result.stdout.strip()
