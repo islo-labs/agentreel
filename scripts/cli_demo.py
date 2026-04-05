@@ -290,10 +290,37 @@ Return ONLY a JSON array. No markdown fences."""
     try:
         return json.loads(text)
     except (json.JSONDecodeError, ValueError):
-        print(f"Could not parse highlights, using defaults", file=sys.stderr)
+        print(f"Could not parse highlights from Claude, retrying with simpler prompt...", file=sys.stderr)
+
+    # Retry with a minimal prompt
+    retry_prompt = f"""Generate a JSON array of {4 if is_demo else 3} terminal highlights for a demo video.
+Context: {context}
+
+Each highlight: {{"label": "Name", "lines": [{{"text": "command", "isPrompt": true}}, {{"text": "output line", "color": "#50fa7b"}}]}}
+Use 8-15 lines per highlight. Make the output realistic for this tool.
+Return ONLY a JSON array."""
+
+    try:
+        retry = subprocess.run(
+            [claude, "-p", retry_prompt, "--output-format", "text"],
+            capture_output=True, text=True, timeout=120,
+        )
+        retry_text = retry.stdout.strip()
+        if "```" in retry_text:
+            for part in retry_text.split("```"):
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("["):
+                    retry_text = part
+                    break
+        return json.loads(retry_text)
+    except Exception:
+        print(f"Retry also failed, using defaults", file=sys.stderr)
         return [
             {"label": "Run", "lines": [
-                {"text": "Running...", "isPrompt": True},
+                {"text": context or "demo", "isPrompt": True},
+                {"text": "", },
                 {"text": "  Done.", "color": "#50fa7b"},
             ]},
         ]
