@@ -1,6 +1,6 @@
 {
   "name": "agentreel",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Turn your apps into demo videos",
   "bin": {
     "agentreel": "./bin/agentreel.mjs"
