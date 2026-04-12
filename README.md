@@ -2,7 +2,7 @@
 
 Turn your apps into launch videos.
 
-https://github.com/user-attachments/assets/474fd85d-3b35-48f4-82b8-1b337840fb51
+https://github.com/user-attachments/assets/ef0f3a97-403f-4534-9b7d-22f2478a5758
 
 > Turn on sound
 
